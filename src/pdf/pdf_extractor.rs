@@ -80,28 +80,6 @@ impl PdfText {
         Ok(())
     }
 
-    // /// Load extracted text from a JSON file
-    // pub fn load_from_json<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-    //     let mut file = File::open(path)?;
-    //     let mut contents = String::new();
-    //     file.read_to_string(&mut contents)?;
-
-    //     serde_json::from_str(&contents)
-    //         .map_err(|e| Error::new(ErrorKind::InvalidData, format!("JSON parsing error: {}", e)))
-    // }
-
-    pub fn get_full_text(&self) -> String {
-        let mut full_text = String::new();
-
-        for (page_num, lines) in &self.text {
-            full_text.push_str(&format!("--- Page {} ---\n", page_num));
-            full_text.push_str(&lines.join("\n"));
-            full_text.push('\n');
-        }
-
-        full_text
-    }
-
     pub fn number_of_pages(&self) -> i32 {
         self.text.len() as i32
     }
