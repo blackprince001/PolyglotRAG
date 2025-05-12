@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+mod db;
 mod html;
 mod pdf;
 use pdf::{PdfExtractOptions, extract_pdf_to_file};
@@ -31,12 +32,4 @@ async fn main() {
             .expect("Could not extract file.")
             .number_of_pages()
     );
-
-    // println!(
-    //     "First Page: \n{}",
-    //     saved_text
-    //         .expect("Could not extract file.")
-    //         .get_full_text()
-    //         .split_off(1)
-    // );
 }
