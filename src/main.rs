@@ -3,10 +3,11 @@ use std::path::PathBuf;
 mod db;
 mod html;
 mod pdf;
+mod server;
 use pdf::{PdfExtractOptions, extract_pdf_to_file};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> () {
     let some_page = "https://blackprince.tech/blog/floating";
     let pad = 128_usize;
 
@@ -32,4 +33,6 @@ async fn main() {
             .expect("Could not extract file.")
             .number_of_pages()
     );
+
+    server::run().await;
 }
