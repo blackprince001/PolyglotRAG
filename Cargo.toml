@@ -1,5 +1,5 @@
 [package]
-name = "test-html-extractor"
+name = "document-extraction-pipeline"
 version = "0.1.0"
 edition = "2024"
 
@@ -18,7 +18,11 @@ diesel = { version = "2.2.10", features = [
   "chrono",
   "serde_json",
   "uuid",
-  "r2d2"
+  "r2d2",
 ] }
 chrono = { version = "0.4.41", features = ["serde"] }
 uuid = { version = "1.16.0", features = ["serde", "v4"] }
+axum = { version = "0.8.4", features = ["multipart"] }
+tower = "0.4"
+tower-http = { version = "0.6.1", features = ["cors"] }
+sha2 = "0.10.9"
