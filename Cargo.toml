@@ -24,5 +24,5 @@ chrono = { version = "0.4.41", features = ["serde"] }
 uuid = { version = "1.16.0", features = ["serde", "v4"] }
 axum = { version = "0.8.4", features = ["multipart"] }
 tower = "0.4"
-tower-http = { version = "0.6.1", features = ["cors"] }
+tower-http = { version = "0.6.1", features = ["cors", "trace", "limit"] }
 sha2 = "0.10.9"
