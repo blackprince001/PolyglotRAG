@@ -1,17 +1,19 @@
 use axum::{
     Json, Router,
-    extract::{Multipart, Path as QueryPath, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
     serve,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
 use crate::db::{
@@ -25,6 +27,7 @@ pub struct FileResponse {
     pub file_name: String,
     pub file_type: Option<String>,
     pub file_size: Option<i64>,
+    pub file_hash: Option<String>,
 }
 
 struct AppState {
@@ -36,7 +39,7 @@ enum AppError {
     FileUploadError(String),
     DatabaseError(String),
     NotFoundError(String),
-    FileProcessingError(String),
+    // FileProcessingError(String),
 }
 
 impl IntoResponse for AppError {
@@ -45,7 +48,7 @@ impl IntoResponse for AppError {
             AppError::FileUploadError(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::NotFoundError(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::FileProcessingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            // AppError::FileProcessingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()
@@ -60,25 +63,25 @@ pub async fn run() {
         .await
         .expect("Failed to create upload directory");
 
-    // Initialize state
     let state = Arc::new(AppState { upload_dir });
 
-    // Set up CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // Build our application router
     let app = Router::new()
         .route("/", get(|| async { "Document Processing API" }))
         .route("/upload", post(upload_file))
         .route("/files", get(list_files))
-        .route("/process/:id", post(process_file))
+        .route("/process/{id}", post(process_file))
         .with_state(state)
-        .layer(cors);
+        .layer(cors)
+        .layer(RequestBodyLimitLayer::new(
+            250 * 1024, // 25mb cap
+        ))
+        .layer(TraceLayer::new_for_http());
 
-    // Run the server
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     println!("Server listening on {}", addr);
 
@@ -87,12 +90,10 @@ pub async fn run() {
     serve(listener, app).await.unwrap();
 }
 
-// Handle file upload
 async fn upload_file(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
-    // Process the multipart form
     while let Some(field) = multipart
         .next_field()
         .await
@@ -115,7 +116,6 @@ async fn upload_file(
         let file_id = Uuid::new_v4();
         let file_path = state.upload_dir.join(file_id.to_string());
 
-        // Save file to disk
         let mut file = File::create(&file_path)
             .await
             .map_err(|e| AppError::FileUploadError(format!("Failed to create file: {}", e)))?;
@@ -124,12 +124,10 @@ async fn upload_file(
             .await
             .map_err(|e| AppError::FileUploadError(format!("Failed to write file: {}", e)))?;
 
-        // Calculate hash for the file
         let mut hasher = Sha256::new();
         hasher.update(&data);
         let file_hash = format!("{:x}", hasher.finalize());
 
-        // Save file metadata to database
         let new_file = NewFile {
             file_path: file_path.to_string_lossy().to_string(),
             file_name,
@@ -156,6 +154,7 @@ async fn upload_file(
                 file_name: result.file_name,
                 file_type: result.file_type,
                 file_size: result.file_size,
+                file_hash: result.file_hash,
             }),
         ));
     }
@@ -163,16 +162,22 @@ async fn upload_file(
     Err(AppError::FileUploadError("No file provided".to_string()))
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct Pagination {
+    skip: i64,
+    limit: i64,
+}
+
 async fn list_files(
-    State(state): State<Arc<AppState>>,
-    QueryPath(skip): QueryPath<i64>,
-    QueryPath(limit): QueryPath<i64>,
+    // State(state): State<Arc<AppState>>,
+    pagination: Query<Pagination>,
 ) -> Result<impl IntoResponse, AppError> {
     let mut conn = get_database_connection()
         .map_err(|e| AppError::DatabaseError(format!("Could not connect to database: {}", e)))
         .unwrap();
 
-    let results = models::File::find_files(&mut conn, skip, limit)
+    let results = models::File::find_files(&mut conn, pagination.skip, pagination.limit)
         .map_err(|e| AppError::NotFoundError(format!("{}", e)))
         .unwrap();
 
@@ -183,16 +188,28 @@ async fn list_files(
             file_name: file.file_name,
             file_type: file.file_type,
             file_size: file.file_size,
+            file_hash: file.file_hash,
         })
         .collect();
 
-    return Ok((StatusCode::OK, Json(response)));
+    return Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "files": response,
+            "meta": {
+                "offset": pagination.skip,
+                "limit": pagination.limit,
+                "total": response.len()
+            }
+        }
+        )),
+    ));
 }
 
 // Process a previously uploaded file
 async fn process_file(
-    State(state): State<Arc<AppState>>,
-    QueryPath(id): QueryPath<Uuid>,
+    // State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let mut conn = get_database_connection()
         .map_err(|e| AppError::DatabaseError(format!("Could not connect to database: {}", e)))
