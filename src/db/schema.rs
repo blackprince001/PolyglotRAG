@@ -48,6 +48,19 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    use diesel::sql_types::*;
+    use pgvector::sql_types::*;
+
+    search_queries (id) {
+        id -> Uuid,
+        query_text -> Nullable<Text>,
+        query_embedding -> Nullable<Vector>,
+        results_returned -> Nullable<Int4>,
+        searched_at -> Nullable<Timestamptz>,
+    }
+}
+
 diesel::joinable!(content_chunks -> files (file_id));
 diesel::joinable!(embeddings -> content_chunks (content_chunk_id));
 
@@ -55,4 +68,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     content_chunks,
     embeddings,
     files,
+    search_queries,
 );
