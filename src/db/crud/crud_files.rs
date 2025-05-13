@@ -1,5 +1,5 @@
 use crate::db::schema::files::dsl::*;
-use diesel::{PgConnection, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 
 use uuid::Uuid;
 
@@ -20,6 +20,18 @@ impl File {
         file_id: Uuid,
     ) -> Result<File, diesel::result::Error> {
         files.find(file_id).first(conn)
+    }
+
+    pub fn find_files(
+        conn: &mut PgConnection,
+        skip: i64,
+        limit: i64,
+    ) -> Result<Vec<File>, diesel::result::Error> {
+        files
+            .order(created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .load::<File>(conn)
     }
 
     pub fn update_file(
