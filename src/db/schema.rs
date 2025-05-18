@@ -23,11 +23,11 @@ diesel::table! {
     embeddings (id) {
         id -> Uuid,
         content_chunk_id -> Nullable<Uuid>,
-        embedding -> Nullable<Vector>,
         model_name -> Text,
         model_version -> Nullable<Text>,
         generated_at -> Nullable<Timestamptz>,
         generation_parameters -> Nullable<Jsonb>,
+        embedding -> Nullable<Vector>,
     }
 }
 

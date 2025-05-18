@@ -68,11 +68,11 @@ pub struct NewContentChunk {
 pub struct Embedding {
     pub id: Uuid,
     pub content_chunk_id: Option<Uuid>,
-    pub embedding: Option<Vector>,
     pub model_name: String,
     pub model_version: Option<String>,
     pub generated_at: Option<DateTime<Utc>>,
     pub generation_parameters: Option<serde_json::Value>,
+    pub embedding: Option<Vector>,
 }
 
 #[derive(Debug, Insertable)]
