@@ -1,5 +1,6 @@
 use crate::server::errors::AppError;
 use crate::server::serializers::{AppState, FileResponse, Pagination};
+use crate::service::scheduler::FileEventType;
 
 use axum::{
     Json,
@@ -75,12 +76,24 @@ pub async fn upload_file(
             })
             .unwrap();
 
+        let file_type = result.file_type.expect("File does not have a type yet!");
+
+        let _ = state
+            .scheduler
+            .schedule_file(
+                file_id,
+                result.file_path,
+                file_type.clone(),
+                FileEventType::Created,
+            )
+            .await;
+
         return Ok((
             StatusCode::CREATED,
             Json(FileResponse {
                 id: file_id,
                 file_name: result.file_name,
-                file_type: result.file_type,
+                file_type: Some(file_type),
                 file_size: result.file_size,
                 file_hash: result.file_hash,
             }),
@@ -90,10 +103,7 @@ pub async fn upload_file(
     Err(AppError::FileUploadError("No file provided".to_string()))
 }
 
-pub async fn list_files(
-    // State(state): State<Arc<AppState>>,
-    pagination: Query<Pagination>,
-) -> Result<impl IntoResponse, AppError> {
+pub async fn list_files(pagination: Query<Pagination>) -> Result<impl IntoResponse, AppError> {
     let mut conn = get_database_connection()
         .map_err(|e| AppError::DatabaseError(format!("Could not connect to database: {}", e)))
         .unwrap();
@@ -148,39 +158,3 @@ pub async fn process_file(
         "id": file.id
     })))
 }
-
-// // Document processing function - replace with your actual processing logic
-// async fn process_document(file: &File) -> Result<(), AppError> {
-//     // This function would implement or call your existing document processing logic
-//     // For example:
-//     // 1. Read the file from disk
-//     // 2. Determine file type and use appropriate extractor
-//     // 3. Extract text from PDF or other documents
-//     // 4. Chunk the text
-//     // 5. Create vectors
-//     // 6. Store in database
-
-//     // For now, let's just log that we would process the file
-//     println!("Processing file: {} ({})", file.file_name, file.id);
-
-//     // Check if file exists
-//     if !Path::new(&file.file_path).exists() {
-//         return Err(AppError::FileProcessingError(format!(
-//             "File not found: {}",
-//             file.file_path
-//         )));
-//     }
-
-//     // This is where you'd call your existing logic for:
-//     // - PDF text extraction
-//     // - Document chunking
-//     // - Vector creation
-//     // - Database storage
-
-//     // For now we'll just simulate processing
-//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-//     println!("Finished processing file: {}", file.id);
-
-//     Ok(())
-// }

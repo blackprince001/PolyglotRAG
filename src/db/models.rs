@@ -7,7 +7,7 @@ use uuid::Uuid;
 use super::schema;
 use schema::{content_chunks, embeddings, files};
 
-#[derive(Debug, Queryable, Selectable, Serialize, Identifiable)]
+#[derive(Debug, Clone, Queryable, Selectable, Serialize, Identifiable)]
 #[diesel(table_name = files)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct File {
