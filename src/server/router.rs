@@ -1,5 +1,8 @@
 use super::serializers::AppState;
-use crate::server::routes::file_router::{list_files, process_file, upload_file};
+use crate::{
+    server::routes::file_router::{list_files, process_file, upload_file},
+    service::scheduler::Scheduler,
+};
 
 use axum::{
     Router,
@@ -14,7 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
-pub async fn run() {
+pub async fn run(scheduler: Scheduler) {
     let upload_dir =
         PathBuf::from(std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string()));
 
@@ -22,7 +25,10 @@ pub async fn run() {
         .await
         .expect("Failed to create upload directory");
 
-    let state = Arc::new(AppState { upload_dir });
+    let state = Arc::new(AppState {
+        upload_dir,
+        scheduler,
+    });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

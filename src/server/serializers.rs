@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+use crate::service::scheduler::Scheduler;
+
 #[derive(Debug, Serialize)]
 pub struct FileResponse {
     pub id: Uuid,
@@ -20,4 +22,5 @@ pub struct Pagination {
 
 pub struct AppState {
     pub upload_dir: PathBuf,
+    pub scheduler: Scheduler,
 }
