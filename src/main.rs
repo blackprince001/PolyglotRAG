@@ -1,5 +1,7 @@
 // use std::path::PathBuf;
 
+use crate::service::scheduler::Scheduler;
+
 mod db;
 mod html;
 mod pdf;
@@ -9,14 +11,11 @@ mod service;
 // use pdf::{PdfExtractOptions, extract_pdf_to_file};
 #[tokio::main]
 async fn main() -> () {
-    let client = service::inference::InferenceClient::from_env()
-        .expect("Failed to initialize inference client");
+    let (scheduler, processor) = Scheduler::new();
 
-    let single_result = client
-        .get_embedding("This is a sample text to embed.")
-        .await
-        .expect("Failed to get_embedding");
-    println!("Single embedding shape: {:?}", single_result.embeddings);
+    let _ = tokio::spawn(async move {
+        processor.start_processing().await;
+    });
 
-    server::run().await;
+    server::run(scheduler).await;
 }
