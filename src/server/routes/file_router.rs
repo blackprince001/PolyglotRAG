@@ -1,6 +1,5 @@
 use crate::server::errors::AppError;
 use crate::server::serializers::{AppState, FileResponse, Pagination};
-use crate::service::scheduler::FileEventType;
 
 use axum::{
     Json,
@@ -84,7 +83,6 @@ pub async fn upload_file(
                 file_id,
                 result.file_path,
                 file_type.clone(),
-                FileEventType::Created,
             )
             .await;
 
