@@ -5,21 +5,15 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::service::file_processor::FileProcessor;
+use crate::service::inference::InferenceClient;
+use crate::service::semantic_chunking::RTSplitter;
 
 #[derive(Debug, Clone)]
 pub struct FileEvent {
     pub id: Uuid,
     pub file_path: PathBuf,
     pub file_type: String,
-    pub event_type: FileEventType,
     pub timestamp: std::time::SystemTime,
-}
-
-#[derive(Debug, Clone)]
-pub enum FileEventType {
-    Created,
-    Modified,
-    Deleted,
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +56,10 @@ impl Scheduler {
         let (file_tx, file_rx) = mpsc::unbounded_channel::<FileEvent>();
         let (update_tx, update_rx) = mpsc::unbounded_channel::<ProcessingUpdate>();
 
+        let inference_client = InferenceClient::from_env().expect("Failed to instantiate embedder");
+
+        let splitter = RTSplitter::default();
+
         let scheduler = Scheduler {
             file_sender: file_tx,
             update_sender: update_tx.clone(),
@@ -71,6 +69,8 @@ impl Scheduler {
             file_receiver: file_rx,
             update_receiver: update_rx,
             update_sender: update_tx,
+            embedder: inference_client,
+            splitter,
         };
 
         (scheduler, processor)
@@ -81,13 +81,11 @@ impl Scheduler {
         file_id: Uuid,
         file_path: String,
         file_type: String,
-        event_type: FileEventType,
     ) -> Result<Uuid, String> {
         let event = FileEvent {
             id: file_id,
             file_path: file_path.into(),
             file_type,
-            event_type,
             timestamp: std::time::SystemTime::now(),
         };
 

@@ -24,6 +24,7 @@ pub struct EmbeddingsResponse {
     pub shape: Vec<usize>,
 }
 
+#[derive(Debug, Clone)]
 pub struct EmbeddingsClientConfig {
     pub service_url: String,
     pub max_retries: u32,
@@ -52,6 +53,7 @@ pub enum EmbeddingsError {
     MaxRetriesExceeded(String),
 }
 
+#[derive(Debug, Clone)]
 pub struct InferenceClient {
     client: Client,
     config: EmbeddingsClientConfig,
@@ -80,10 +82,10 @@ impl InferenceClient {
 
     pub async fn get_embeddings(
         &self,
-        texts: Vec<String>,
+        texts: &Vec<String>,
     ) -> Result<EmbeddingsResponse, EmbeddingsError> {
         let request = EmbeddingsRequest {
-            text: TextInput::Multiple(texts),
+            text: TextInput::Multiple(texts.to_vec()),
         };
 
         self.send_request(request).await
