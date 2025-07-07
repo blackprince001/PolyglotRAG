@@ -3,8 +3,7 @@
 use crate::service::scheduler::Scheduler;
 
 mod db;
-mod html;
-mod pdf;
+mod core;
 mod server;
 mod service;
 // mod video;

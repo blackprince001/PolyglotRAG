@@ -1,7 +1,8 @@
 use core::panic;
 use html2text::from_read;
-use std::str::FromStr;
+use std::{fs::File, io::Write, str::FromStr};
 use url::Url;
+use uuid::Uuid;
 
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -12,6 +13,15 @@ pub struct ParsedHTML {
 impl ParsedHTML {
     pub fn from(parsed: String) -> Self {
         ParsedHTML { content: parsed }
+    }
+
+    pub fn save_to_txt(&self, id: Uuid) -> Result<String, std::io::Error> {
+        let file_name = format!("parsed_html_{}.txt", id);
+        let mut file = File::create(&file_name)?;
+
+        write!(file, "{}", self.content)?;
+
+        Ok(file_name.clone())
     }
 }
 
