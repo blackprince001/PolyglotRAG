@@ -1,6 +1,7 @@
 use super::serializers::AppState;
 use crate::{
     server::routes::file_router::{list_files, process_file, upload_file},
+    server::routes::html_router::parse_html_content,
     service::scheduler::Scheduler,
 };
 
@@ -40,6 +41,7 @@ pub async fn run(scheduler: Scheduler) {
         .route("/upload", post(upload_file))
         .route("/files", get(list_files))
         .route("/process/{id}", post(process_file))
+        .route("/upload_html", post(parse_html_content))
         .with_state(state)
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(
