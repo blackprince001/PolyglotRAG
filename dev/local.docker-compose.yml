@@ -29,14 +29,14 @@ services:
     networks:
       - app-network
 
-  document-extraction-pipeline:
+  polyrag:
     build:
       context: ../
       dockerfile: dockerfile
-    container_name: document-extraction-pipeline
+    container_name: polyrag
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres/postgres
-      - EMBEDDINGS_SERVICE_URL=http://text-embeddings-inference:8080
+      - EMBEDDINGS_SERVICE_URL=http://text-embeddings-inference
       - UPLOAD_DIR=./uploads
       - PORT=3000
       - RUST_BACKTRACE=1
@@ -54,6 +54,6 @@ volumes:
   pgdata:
   uploads:
 
-network:
+networks:
   app-network:
     driver: bridge

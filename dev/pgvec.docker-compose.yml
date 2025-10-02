@@ -17,7 +17,7 @@ services:
     volumes:
       - ./data:/data # Mounts the local ./data directory to /data in the container
     ports:
-      - "8080:8080"
+      - "8080:80"
     deploy:
       resources:
         reservations:

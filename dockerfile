@@ -13,8 +13,7 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /usr/src/app/target/release/document-extraction-pipeline /app/document-extraction-pipeline
-COPY --from=builder /usr/src/app/.env.example /app/.env.example
+COPY --from=builder /usr/src/app/target/release/polyrag /app/polyrag
 
 # Create uploads directory
 RUN mkdir -p /app/uploads && chmod 777 /app/uploads
@@ -26,4 +25,4 @@ USER app
 
 EXPOSE 3000
 
-CMD ["./document-extraction-pipeline"]
+CMD ["./polyrag"]
