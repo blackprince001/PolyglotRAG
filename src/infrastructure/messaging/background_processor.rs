@@ -92,19 +92,20 @@ impl BackgroundProcessor {
         println!("Worker {} started", worker_id);
 
         loop {
-            match self.job_receiver.recv().await {
-                Some(job) => {
-                    println!("Worker {} processing job: {}", worker_id, job.id());
-                    self.process_job(job).await;
+            let job = self.job_receiver.try_recv().await.unwrap_or(None);
+            match job {
+                Some(v) => {
+                    println!("Worker {} processing job: {}", worker_id, v.id());
+                    self.process_job(v).await;
                 }
                 None => {
-                    println!("Worker {} received None, channel closed", worker_id);
+                    println!("Worker {} found no job, sleeping...", worker_id);
                     break;
                 }
             }
         }
 
-        println!("👷 Worker {} stopped", worker_id);
+        println!("Worker {} stopped", worker_id);
     }
 
     async fn process_job(&self, mut job: ProcessingJob) {

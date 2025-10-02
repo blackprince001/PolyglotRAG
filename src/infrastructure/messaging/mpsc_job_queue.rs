@@ -57,8 +57,6 @@ impl MpscJobQueue {
         let (bg_sender, bg_receiver) = mpsc::unbounded_channel();
         let bg_queue = MpscJobQueueReceiver {
             receiver: Arc::new(Mutex::new(bg_receiver)),
-            pending_jobs: pending_jobs.clone(),
-            stats: stats.clone(),
             sender: bg_sender,
         };
 
@@ -200,17 +198,10 @@ impl JobQueue for MpscJobQueue {
 // Separate receiver for background processing
 pub struct MpscJobQueueReceiver {
     receiver: Arc<Mutex<mpsc::UnboundedReceiver<ProcessingJob>>>,
-    pending_jobs: Arc<Mutex<HashMap<Uuid, ProcessingJob>>>,
-    stats: Arc<Mutex<QueueStats>>,
     sender: mpsc::UnboundedSender<ProcessingJob>, // For forwarding
 }
 
 impl MpscJobQueueReceiver {
-    pub async fn recv(&self) -> Option<ProcessingJob> {
-        let mut receiver = self.receiver.lock().await;
-        receiver.recv().await
-    }
-
     pub async fn try_recv(&self) -> Result<Option<ProcessingJob>, mpsc::error::TryRecvError> {
         let mut receiver = self.receiver.lock().await;
         match receiver.try_recv() {
