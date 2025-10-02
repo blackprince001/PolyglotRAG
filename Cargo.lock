@@ -592,35 +592,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "document-extraction-pipeline"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "diesel",
- "diesel_migrations",
- "dotenv",
- "env_logger",
- "futures",
- "html2text",
- "lopdf",
- "pgvector",
- "rayon",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tower 0.4.13",
- "tower-http",
- "url",
- "uuid",
- "yt-transcript-rs",
-]
-
-[[package]]
 name = "document-features"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1822,6 +1793,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "polyrag"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "diesel",
+ "diesel_migrations",
+ "dotenv",
+ "env_logger",
+ "futures",
+ "html2text",
+ "lopdf",
+ "pgvector",
+ "rayon",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tower 0.4.13",
+ "tower-http",
+ "url",
+ "uuid",
+ "yt-transcript-rs",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2501,9 +2501,9 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.20.0"
+version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a64e3985349f2441a1a9ef0b853f869006c3855f2cda6862a94d26ebb9d6a1"
+checksum = "2d31c77bdf42a745371d260a26ca7163f1e0924b64afa0b688e61b5a9fa02f16"
 dependencies = [
  "fastrand",
  "getrandom 0.3.3",
@@ -3227,11 +3227,12 @@ dependencies = [
 
 [[package]]
 name = "yt-transcript-rs"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f10f4eb1965665134a0329b8f9e226b443fb2f94b4a45bc98249d0d412f623a5"
+checksum = "5c1ec85aba5d7ad28b99f5b4baae0dbdf3e6b1703b1054dac04f43125bbc5fa5"
 dependencies = [
  "anyhow",
+ "base64",
  "cargo-husky",
  "chrono",
  "clap",
@@ -3245,6 +3246,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "url",
 ]
 
 [[package]]

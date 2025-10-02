@@ -1,5 +1,5 @@
 [package]
-name = "document-extraction-pipeline"
+name = "polyrag"
 version = "0.1.0"
 edition = "2024"
 
@@ -26,13 +26,14 @@ axum = { version = "0.8.4", features = ["multipart"] }
 tower = "0.4"
 tower-http = { version = "0.6.1", features = ["cors", "trace", "limit"] }
 sha2 = "0.10.9"
-yt-transcript-rs = "0.1.7"
+yt-transcript-rs = "0.1.8"
 async-trait = "0.1"
 env_logger = "0.10"
 dotenv = "0.15"
 regex = "1.10"
 futures = "0.3"
 diesel_migrations = { version = "2.3.0", features = ["postgres"] }
+# tempfile = "3.23.0"
 
 
 [package.metadata.husky]
