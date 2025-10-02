@@ -6,7 +6,7 @@ diesel::table! {
 
     content_chunks (id) {
         id -> Uuid,
-        file_id -> Nullable<Uuid>,
+        file_id -> Uuid,
         chunk_text -> Text,
         chunk_index -> Int4,
         token_count -> Nullable<Int4>,
@@ -23,11 +23,11 @@ diesel::table! {
     embeddings (id) {
         id -> Uuid,
         content_chunk_id -> Nullable<Uuid>,
+        embedding -> Nullable<Vector>,
         model_name -> Text,
         model_version -> Nullable<Text>,
         generated_at -> Nullable<Timestamptz>,
         generation_parameters -> Nullable<Jsonb>,
-        embedding -> Nullable<Vector>,
     }
 }
 
@@ -73,16 +73,16 @@ diesel::table! {
 
     search_queries (id) {
         id -> Uuid,
-        query_text -> Nullable<Text>,
-        query_embedding -> Nullable<Vector>,
-        results_returned -> Nullable<Int4>,
-        searched_at -> Nullable<Timestamptz>,
+        query_text -> Text,
+        results_count -> Int4,
+        created_at -> Timestamptz,
+        user_id -> Nullable<Text>,
+        search_parameters -> Nullable<Jsonb>,
     }
 }
 
 diesel::joinable!(content_chunks -> files (file_id));
 diesel::joinable!(embeddings -> content_chunks (content_chunk_id));
-diesel::joinable!(processing_jobs -> files (file_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     content_chunks,

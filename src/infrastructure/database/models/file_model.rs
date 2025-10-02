@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::domain::entities::File as DomainFile;
-use crate::domain::value_objects::{FileHash, FileMetadata};
+use crate::domain::value_objects::{FileHash, FileMetadata, ProcessingStatus};
 use crate::infrastructure::database::schema::files;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize, Identifiable)]
@@ -41,7 +41,7 @@ pub struct NewFileModel {
 impl From<&DomainFile> for NewFileModel {
     fn from(domain_file: &DomainFile) -> Self {
         Self {
-            id: Some(domain_file.id()),
+            id: None, // Let database generate the ID
             file_path: domain_file.file_path().to_string(),
             file_name: domain_file.file_name().to_string(),
             file_size: domain_file.file_size(),
@@ -73,13 +73,19 @@ impl TryFrom<FileModel> for DomainFile {
             None
         };
 
-        let domain_file = DomainFile::new(
+        let processing_status = ProcessingStatus::Pending; // Default status, could be enhanced later
+
+        let domain_file = DomainFile::with_id(
+            model.id,
             model.file_path,
             model.file_name,
             model.file_size,
             model.file_type,
             file_hash,
+            model.created_at.unwrap_or_else(Utc::now),
+            model.updated_at.unwrap_or_else(Utc::now),
             metadata,
+            processing_status,
         );
 
         Ok(domain_file)

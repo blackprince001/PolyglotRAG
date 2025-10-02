@@ -17,28 +17,22 @@ impl PostgresFileRepository {
     pub fn new(pool: Pool<ConnectionManager<PgConnection>>) -> Self {
         Self { pool }
     }
-
-    fn get_connection(&self) -> Result<diesel::r2d2::PooledConnection<ConnectionManager<PgConnection>>, FileRepositoryError> {
-        self.pool.get().map_err(|e| {
-            FileRepositoryError::DatabaseError(format!("Failed to get database connection: {}", e))
-        })
-    }
 }
 
 #[async_trait]
 impl FileRepository for PostgresFileRepository {
-    async fn save(&self, file: &File) -> Result<(), FileRepositoryError> {
+    async fn save(&self, file: &File) -> Result<Uuid, FileRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
             .map_err(|e| FileRepositoryError::DatabaseError(e.to_string()))?;
 
         let new_file = NewFileModel::from(file);
 
-        diesel::insert_into(files)
+        let inserted_file: FileModel = diesel::insert_into(files)
             .values(&new_file)
-            .execute(&mut conn)
+            .get_result(&mut conn)
             .map_err(|e| FileRepositoryError::DatabaseError(e.to_string()))?;
 
-        Ok(())
+        Ok(inserted_file.id)
     }
 
     async fn find_by_id(&self, file_id: Uuid) -> Result<Option<File>, FileRepositoryError> {
@@ -53,8 +47,8 @@ impl FileRepository for PostgresFileRepository {
 
         match result {
             Some(model) => {
-                let domain_file = File::try_from(model)
-                    .map_err(|e| FileRepositoryError::ValidationError(e))?;
+                let domain_file =
+                    File::try_from(model).map_err(|e| FileRepositoryError::ValidationError(e))?;
                 Ok(Some(domain_file))
             }
             None => Ok(None),
@@ -73,8 +67,8 @@ impl FileRepository for PostgresFileRepository {
 
         match result {
             Some(model) => {
-                let domain_file = File::try_from(model)
-                    .map_err(|e| FileRepositoryError::ValidationError(e))?;
+                let domain_file =
+                    File::try_from(model).map_err(|e| FileRepositoryError::ValidationError(e))?;
                 Ok(Some(domain_file))
             }
             None => Ok(None),
@@ -94,8 +88,8 @@ impl FileRepository for PostgresFileRepository {
 
         let mut domain_files = Vec::new();
         for model in models {
-            let domain_file = File::try_from(model)
-                .map_err(|e| FileRepositoryError::ValidationError(e))?;
+            let domain_file =
+                File::try_from(model).map_err(|e| FileRepositoryError::ValidationError(e))?;
             domain_files.push(domain_file);
         }
 

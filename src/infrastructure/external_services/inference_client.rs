@@ -10,24 +10,36 @@ use crate::application::ports::embedding_provider::{
     EmbeddingRequest, EmbeddingResponse,
 };
 
+// TEI API request/response structures based on OpenAPI spec
 #[derive(Serialize)]
-pub struct EmbeddingsRequest {
-    pub text: TextInput,
+pub struct TeiEmbedRequest {
+    pub inputs: TeiInput,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub normalize: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncation_direction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum TextInput {
+pub enum TeiInput {
     Single(String),
     Multiple(Vec<String>),
 }
 
+// TEI response is just an array of arrays of floats
+pub type TeiEmbedResponse = Vec<Vec<f32>>;
+
 #[derive(Deserialize)]
-pub struct EmbeddingsResponse {
-    pub success: bool,
-    pub input_text: TextInput,
-    pub embeddings: Vec<Vector>,
-    pub shape: Vec<usize>,
+pub struct TeiErrorResponse {
+    pub error: String,
+    pub error_type: String,
 }
 
 #[derive(Debug, Clone)]
@@ -41,7 +53,7 @@ pub struct EmbeddingsClientConfig {
 impl Default for EmbeddingsClientConfig {
     fn default() -> Self {
         let service_url = env::var("EMBEDDINGS_SERVICE_URL")
-            .unwrap_or_else(|_| "https://example.workers.dev".to_string());
+            .unwrap_or_else(|_| "http://localhost:8080".to_string());
 
         Self {
             service_url,
@@ -56,7 +68,8 @@ impl Default for EmbeddingsClientConfig {
 pub enum EmbeddingsError {
     RequestError(String),
     ParseError(String),
-    MaxRetriesExceeded(String),
+    // MaxRetriesExceeded(String),
+    ApiError(String),
 }
 
 #[derive(Debug, Clone)]
@@ -78,44 +91,63 @@ impl InferenceClient {
         Self::new(EmbeddingsClientConfig::default())
     }
 
-    pub async fn get_embedding(&self, text: &str) -> Result<EmbeddingsResponse, EmbeddingsError> {
-        let request = EmbeddingsRequest {
-            text: TextInput::Single(text.to_string()),
+    pub async fn get_embedding(&self, text: &str) -> Result<TeiEmbedResponse, EmbeddingsError> {
+        let request = TeiEmbedRequest {
+            inputs: TeiInput::Single(text.to_string()),
+            normalize: Some(true),
+            truncate: Some(false),
+            truncation_direction: None,
+            prompt_name: None,
+            dimensions: None,
         };
 
-        self.send_request(request).await
+        self.send_embed_request(request).await
     }
 
     pub async fn get_embeddings(
         &self,
         texts: &Vec<String>,
-    ) -> Result<EmbeddingsResponse, EmbeddingsError> {
-        let request = EmbeddingsRequest {
-            text: TextInput::Multiple(texts.to_vec()),
+    ) -> Result<TeiEmbedResponse, EmbeddingsError> {
+        let request = TeiEmbedRequest {
+            inputs: TeiInput::Multiple(texts.to_vec()),
+            normalize: Some(true),
+            truncate: Some(false),
+            truncation_direction: None,
+            prompt_name: None,
+            dimensions: None,
         };
 
-        self.send_request(request).await
+        self.send_embed_request(request).await
     }
 
-    async fn send_request(
+    pub async fn health_check(&self) -> Result<bool, EmbeddingsError> {
+        let url = format!("{}/health", self.config.service_url);
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| EmbeddingsError::RequestError(e.to_string()))?;
+
+        Ok(response.status().is_success())
+    }
+
+    async fn send_embed_request(
         &self,
-        request: EmbeddingsRequest,
-    ) -> Result<EmbeddingsResponse, EmbeddingsError> {
+        request: TeiEmbedRequest,
+    ) -> Result<TeiEmbedResponse, EmbeddingsError> {
         let mut attempts = 0;
-        let mut last_error = None;
 
         loop {
             attempts += 1;
 
-            let result = self.execute_request(&request).await;
+            let result = self.execute_embed_request(&request).await;
 
             match result {
                 Ok(response) => return Ok(response),
                 Err(e) => {
-                    last_error = Some(e);
-
                     if attempts > self.config.max_retries {
-                        break;
+                        return Err(e);
                     }
 
                     let backoff_time = Duration::from_millis(
@@ -126,38 +158,45 @@ impl InferenceClient {
                 }
             }
         }
-
-        Err(last_error.unwrap_or(EmbeddingsError::MaxRetriesExceeded(
-            "Max retries exceeded".to_string(),
-        )))
     }
 
-    async fn execute_request(
+    async fn execute_embed_request(
         &self,
-        request: &EmbeddingsRequest,
-    ) -> Result<EmbeddingsResponse, EmbeddingsError> {
+        request: &TeiEmbedRequest,
+    ) -> Result<TeiEmbedResponse, EmbeddingsError> {
+        let url = format!("{}/embed", self.config.service_url);
+
         let response = self
             .client
-            .post(&self.config.service_url)
+            .post(&url)
             .header("Content-Type", "application/json")
             .json(request)
             .send()
-            .await;
+            .await
+            .map_err(|e| EmbeddingsError::RequestError(e.to_string()))?;
 
-        if response.is_ok() {
-            let response_data = response
-                .unwrap()
-                .json::<EmbeddingsResponse>()
-                .await
-                .map_err(|e| EmbeddingsError::ParseError(e.to_string()))
-                .expect("Failed to parse json to embedding_response.");
-
-            return Ok(response_data);
+        if !response.status().is_success() {
+            let status = response.status();
+            // Try to parse error response
+            match response.json::<TeiErrorResponse>().await {
+                Ok(error_response) => {
+                    return Err(EmbeddingsError::ApiError(format!(
+                        "TEI API error: {} (type: {})",
+                        error_response.error, error_response.error_type
+                    )));
+                }
+                Err(_) => {
+                    return Err(EmbeddingsError::ApiError(format!("HTTP error: {}", status)));
+                }
+            }
         }
 
-        let error_message = format!("Error: {}", &response.err().unwrap().without_url());
+        let embeddings = response
+            .json::<TeiEmbedResponse>()
+            .await
+            .map_err(|e| EmbeddingsError::ParseError(e.to_string()))?;
 
-        Err(EmbeddingsError::RequestError(error_message))
+        Ok(embeddings)
     }
 }
 
@@ -167,13 +206,14 @@ pub struct InferenceEmbeddingProvider {
 }
 
 impl InferenceEmbeddingProvider {
-    pub fn new(client: InferenceClient) -> Self {
-        Self { client }
-    }
-
     pub fn from_env() -> Result<Self, ReqwestError> {
         let client = InferenceClient::from_env()?;
         Ok(Self { client })
+    }
+
+    // Helper to convert f32 Vec to pgvector::Vector
+    fn to_pgvector(embedding: Vec<f32>) -> Vector {
+        Vector::from(embedding)
     }
 }
 
@@ -190,22 +230,25 @@ impl EmbeddingProvider for InferenceEmbeddingProvider {
             .map_err(|e| match e {
                 EmbeddingsError::RequestError(msg) => EmbeddingProviderError::NetworkError(msg),
                 EmbeddingsError::ParseError(msg) => EmbeddingProviderError::ApiError(msg),
-                EmbeddingsError::MaxRetriesExceeded(msg) => {
-                    EmbeddingProviderError::ServiceUnavailable
-                }
+                EmbeddingsError::ApiError(msg) => EmbeddingProviderError::ApiError(msg),
+                // EmbeddingsError::MaxRetriesExceeded(_) => {
+                //     EmbeddingProviderError::ServiceUnavailable
+                // }
             })?;
 
-        if response.embeddings.is_empty() {
+        if response.is_empty() {
             return Err(EmbeddingProviderError::ApiError(
                 "No embeddings returned".to_string(),
             ));
         }
 
         Ok(EmbeddingResponse {
-            embedding: response.embeddings[0].clone(),
-            model_name: request.model_name.unwrap_or_else(|| "default".to_string()),
+            embedding: Self::to_pgvector(response[0].clone()),
+            model_name: request
+                .model_name
+                .unwrap_or_else(|| "qwen-embedding".to_string()),
             model_version: request.model_version,
-            token_count: None, // Not provided by the current API
+            token_count: None, // Not provided by TEI API
         })
     }
 
@@ -220,67 +263,45 @@ impl EmbeddingProvider for InferenceEmbeddingProvider {
             .map_err(|e| match e {
                 EmbeddingsError::RequestError(msg) => EmbeddingProviderError::NetworkError(msg),
                 EmbeddingsError::ParseError(msg) => EmbeddingProviderError::ApiError(msg),
-                EmbeddingsError::MaxRetriesExceeded(msg) => {
-                    EmbeddingProviderError::ServiceUnavailable
-                }
+                EmbeddingsError::ApiError(msg) => EmbeddingProviderError::ApiError(msg),
+                // EmbeddingsError::MaxRetriesExceeded(_) => {
+                //     EmbeddingProviderError::ServiceUnavailable
+                // }
             })?;
 
+        let embeddings = response.into_iter().map(Self::to_pgvector).collect();
+
         Ok(BatchEmbeddingResponse {
-            embeddings: response.embeddings,
-            model_name: request.model_name.unwrap_or_else(|| "default".to_string()),
+            embeddings,
+            model_name: request
+                .model_name
+                .unwrap_or_else(|| "qwen-embedding".to_string()),
             model_version: request.model_version,
-            total_tokens: None, // Not provided by the current API
+            total_tokens: None, // Not provided by TEI API
         })
     }
 
     async fn health_check(&self) -> Result<bool, EmbeddingProviderError> {
-        // Simple health check by trying to embed a test string
-        let test_request = EmbeddingRequest {
-            text: "health check".to_string(),
-            model_name: None,
-            model_version: None,
-        };
-
-        match self.generate_embedding(test_request).await {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
-        }
+        self.client.health_check().await.map_err(|e| match e {
+            EmbeddingsError::RequestError(msg) => EmbeddingProviderError::NetworkError(msg),
+            EmbeddingsError::ParseError(msg) => EmbeddingProviderError::ApiError(msg),
+            EmbeddingsError::ApiError(msg) => EmbeddingProviderError::ApiError(msg),
+            // EmbeddingsError::MaxRetriesExceeded(_) => EmbeddingProviderError::ServiceUnavailable,
+        })
     }
 
     fn model_info(&self) -> (String, Option<String>) {
-        ("default".to_string(), None)
+        (
+            "Qwen/Qwen3-Embedding-0.6B".to_string(),
+            Some("0.6B".to_string()),
+        )
     }
 
     fn max_input_length(&self) -> usize {
-        8192 // Default max input length
+        512 // Based on TEI info - this should be fetched from model info
     }
 
     fn embedding_dimension(&self) -> usize {
-        1536 // Default embedding dimension - should be configurable
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_request_construction() {
-        let single_request = EmbeddingsRequest {
-            text: TextInput::Single("Hello world".to_string()),
-        };
-
-        assert!(matches!(single_request.text, TextInput::Single(_)));
-
-        let multiple_request = EmbeddingsRequest {
-            text: TextInput::Multiple(vec!["Hello".to_string(), "World".to_string()]),
-        };
-
-        assert!(matches!(multiple_request.text, TextInput::Multiple(_)));
-        if let TextInput::Multiple(texts) = multiple_request.text {
-            assert_eq!(texts.len(), 2);
-            assert_eq!(texts[0], "Hello");
-            assert_eq!(texts[1], "World");
-        }
+        1024 // This should be fetched from model info, but 1024 is typical for this model
     }
 }

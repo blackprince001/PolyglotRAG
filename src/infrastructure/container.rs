@@ -6,25 +6,31 @@ use crate::{
         services::{DocumentProcessorService, EmbeddingService, SearchService},
         use_cases::{
             CancelJobUseCase, GetFileChunksUseCase, GetFileUseCase, GetJobStatusUseCase,
-            ListFilesUseCase, ProcessDocumentUseCase, QueueProcessingJobUseCase,
-            SearchContentUseCase, UploadFileUseCase,
+            ListFilesUseCase, ProcessDocumentUseCase, ProcessUrlDirectUseCase,
+            ProcessYoutubeDirectUseCase, QueueProcessingJobUseCase, SearchContentUseCase,
+            UploadFileUseCase, UploadWithProcessingUseCase,
         },
     },
     domain::repositories::{ChunkRepository, EmbeddingRepository, FileRepository, JobRepository},
     infrastructure::{
         database::{
-            create_connection_pool, get_database_connection, repositories::{
+            create_connection_pool, get_database_connection,
+            repositories::{
                 PostgresChunkRepository, PostgresEmbeddingRepository, PostgresFileRepository,
                 PostgresJobRepository,
-            }, run_migrations
+            },
+            run_migrations,
         },
         external_services::{
-            document_extractors::CompositeDocumentExtractor, InferenceEmbeddingProvider
+            InferenceEmbeddingProvider, document_extractors::CompositeDocumentExtractor,
         },
         file_system::LocalFileStorage,
         messaging::{BackgroundProcessor, MpscJobQueue},
     },
-    presentation::http::handlers::{FileHandler, JobHandler, SearchHandler, SseHandler},
+    presentation::http::handlers::{
+        ChunkHandler, ContentHandler, EmbeddingHandler, FileHandler, JobHandler, SearchHandler,
+        SseHandler,
+    },
 };
 
 pub struct AppContainer {
@@ -50,8 +56,11 @@ pub struct AppContainer {
 
     // Use Cases
     pub upload_file_use_case: Arc<UploadFileUseCase>,
+    pub upload_with_processing_use_case: Arc<UploadWithProcessingUseCase>,
     pub list_files_use_case: Arc<ListFilesUseCase>,
     pub process_document_use_case: Arc<ProcessDocumentUseCase>,
+    pub process_url_direct_use_case: Arc<ProcessUrlDirectUseCase>,
+    pub process_youtube_direct_use_case: Arc<ProcessYoutubeDirectUseCase>,
     pub search_content_use_case: Arc<SearchContentUseCase>,
     pub queue_job_use_case: Arc<QueueProcessingJobUseCase>,
     pub get_job_status_use_case: Arc<GetJobStatusUseCase>,
@@ -59,17 +68,22 @@ pub struct AppContainer {
 
     // HTTP Handlers
     pub file_handler: Arc<FileHandler>,
+    pub content_handler: Arc<ContentHandler>,
     pub search_handler: Arc<SearchHandler>,
     pub job_handler: Arc<JobHandler>,
     pub sse_handler: Arc<SseHandler>,
+    pub chunk_handler: Arc<ChunkHandler>,
+    pub embedding_handler: Arc<EmbeddingHandler>,
 }
 
 impl AppContainer {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         // Create database connection pool
         let db_pool = create_connection_pool()?;
-        let mut conn = get_database_connection().map_err(|e| format!("Failed to create database connection: {}", e))?;
-        let _ = run_migrations(&mut conn).map_err(|e| format!("Failed to run Database migrations: {}", e));
+        let mut conn = get_database_connection()
+            .map_err(|e| format!("Failed to create database connection: {}", e))?;
+        let _ = run_migrations(&mut conn)
+            .map_err(|e| format!("Failed to run Database migrations: {}", e));
 
         // Create repositories
         let file_repository: Arc<dyn FileRepository> =
@@ -106,9 +120,9 @@ impl AppContainer {
         let document_processor = Arc::new(DocumentProcessorService::new(
             document_extractor.clone(),
             embedding_provider.clone(),
-            file_storage.clone(),
             chunk_repository.clone(),
             embedding_repository.clone(),
+            file_repository.clone(),
         ));
 
         // Create use cases
@@ -160,6 +174,12 @@ impl AppContainer {
             file_repository.clone(),
         ));
 
+        let upload_with_processing_use_case = Arc::new(UploadWithProcessingUseCase::new(
+            upload_file_use_case.clone(),
+            queue_job_use_case.clone(),
+            file_repository.clone(),
+        ));
+
         let get_job_status_use_case = Arc::new(GetJobStatusUseCase::new(job_repository.clone()));
 
         let cancel_job_use_case = Arc::new(CancelJobUseCase::new(
@@ -167,13 +187,25 @@ impl AppContainer {
             job_queue.clone(),
         ));
 
+        let process_url_direct_use_case = Arc::new(ProcessUrlDirectUseCase::new(
+            file_repository.clone(),
+            queue_job_use_case.clone(),
+        ));
+
+        let process_youtube_direct_use_case = Arc::new(ProcessYoutubeDirectUseCase::new(
+            file_repository.clone(),
+            queue_job_use_case.clone(),
+        ));
+
         // Create HTTP handlers
         let file_handler = Arc::new(FileHandler::new(
             upload_file_use_case.clone(),
+            upload_with_processing_use_case.clone(),
             list_files_use_case.clone(),
             process_document_use_case.clone(),
             get_file_use_case.clone(),
             get_file_chunks_use_case.clone(),
+            file_repository.clone(),
         ));
 
         let search_handler = Arc::new(SearchHandler::new(search_content_use_case.clone()));
@@ -185,6 +217,14 @@ impl AppContainer {
         ));
 
         let sse_handler = Arc::new(SseHandler::new(get_job_status_use_case.clone()));
+
+        let content_handler = Arc::new(ContentHandler::new(
+            process_url_direct_use_case.clone(),
+            process_youtube_direct_use_case.clone(),
+        ));
+
+        let chunk_handler = Arc::new(ChunkHandler::new(chunk_repository.clone()));
+        let embedding_handler = Arc::new(EmbeddingHandler::new(embedding_repository.clone()));
 
         Ok(Self {
             file_repository,
@@ -200,16 +240,22 @@ impl AppContainer {
             embedding_service,
             search_service,
             upload_file_use_case,
+            upload_with_processing_use_case,
             list_files_use_case,
             process_document_use_case,
+            process_url_direct_use_case,
+            process_youtube_direct_use_case,
             search_content_use_case,
             queue_job_use_case,
             get_job_status_use_case,
             cancel_job_use_case,
             file_handler,
+            content_handler,
             search_handler,
             job_handler,
             sse_handler,
+            chunk_handler,
+            embedding_handler,
         })
     }
 }

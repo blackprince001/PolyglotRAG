@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::path::Path;
+use crate::domain::entities::File;
 use std::sync::Arc;
 
 use super::{HtmlExtractor, PdfExtractor, YoutubeExtractor};
@@ -35,27 +35,6 @@ impl CompositeDocumentExtractor {
             None
         }
     }
-
-    fn detect_file_type_from_extension(&self, file_path: &Path) -> Option<String> {
-        let extension = file_path.extension()?;
-            
-        let file_type = match extension.to_str() {
-            Some("pdf") => "application/pdf".to_string(),
-            Some("html" | "htm") => "text/html".to_string(),
-            Some("txt") => {
-                if let Ok(content) = std::fs::read_to_string(file_path) {
-                    if content.trim().contains("youtube.com")
-                        || content.trim().contains("youtu.be")
-                    {
-                        return Some("text/youtube-url".to_string());
-                    }
-                }
-                "text/plain".to_string()
-            }
-            _ => format!("application/{}", extension.to_str().unwrap()),
-        };
-        Some(file_type)
-    }
 }
 
 impl Default for CompositeDocumentExtractor {
@@ -68,20 +47,16 @@ impl Default for CompositeDocumentExtractor {
 impl DocumentExtractor for CompositeDocumentExtractor {
     async fn extract_text(
         &self,
-        file_path: &Path,
+        file: &File,
         options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
-        let file_type = self
-            .detect_file_type_from_extension(file_path)
-            .ok_or_else(|| {
-                DocumentExtractionError::UnsupportedFormat("Unknown file type".to_string())
-            })?;
+        let file_type = file.file_type().unwrap();
 
         let extractor = self
-            .get_extractor_for_type(&file_type)
-            .ok_or_else(|| DocumentExtractionError::UnsupportedFormat(file_type.clone()))?;
+            .get_extractor_for_type(file_type)
+            .ok_or_else(|| DocumentExtractionError::UnsupportedFormat(file_type.to_string()))?;
 
-        extractor.extract_text(file_path, options).await
+        extractor.extract_text(file, options).await
     }
 
     async fn extract_text_from_bytes(

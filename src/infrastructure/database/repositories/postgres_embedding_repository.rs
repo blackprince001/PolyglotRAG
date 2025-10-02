@@ -4,10 +4,13 @@ use pgvector::Vector;
 use uuid::Uuid;
 
 use crate::domain::entities::Embedding;
-use crate::domain::repositories::{EmbeddingRepository, embedding_repository::{EmbeddingRepositoryError, SimilaritySearchResult}};
-use crate::infrastructure::database::{DbPool, get_connection_from_pool};
+use crate::domain::repositories::{
+    EmbeddingRepository,
+    embedding_repository::{EmbeddingRepositoryError, SimilaritySearchResult},
+};
 use crate::infrastructure::database::models::{EmbeddingModel, NewEmbeddingModel};
 use crate::infrastructure::database::schema::embeddings::dsl::*;
+use crate::infrastructure::database::{DbPool, get_connection_from_pool};
 
 pub struct PostgresEmbeddingRepository {
     pool: DbPool,
@@ -35,7 +38,10 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
         Ok(())
     }
 
-    async fn save_batch(&self, embedding_entities: &[Embedding]) -> Result<(), EmbeddingRepositoryError> {
+    async fn save_batch(
+        &self,
+        embedding_entities: &[Embedding],
+    ) -> Result<(), EmbeddingRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
@@ -52,12 +58,16 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
         Ok(())
     }
 
-    async fn find_by_id(&self, embedding_id: Uuid) -> Result<Option<Embedding>, EmbeddingRepositoryError> {
+    async fn find_by_id(
+        &self,
+        embedding_id: Uuid,
+    ) -> Result<Option<Embedding>, EmbeddingRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
         let result = embeddings
             .find(embedding_id)
+            .select(EmbeddingModel::as_select())
             .first::<EmbeddingModel>(&mut conn)
             .optional()
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
@@ -72,12 +82,16 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
         }
     }
 
-    async fn find_by_chunk_id(&self, chunk_id: Uuid) -> Result<Option<Embedding>, EmbeddingRepositoryError> {
+    async fn find_by_chunk_id(
+        &self,
+        chunk_id: Uuid,
+    ) -> Result<Option<Embedding>, EmbeddingRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
         let result = embeddings
             .filter(content_chunk_id.eq(chunk_id))
+            .select(EmbeddingModel::as_select())
             .first::<EmbeddingModel>(&mut conn)
             .optional()
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
@@ -92,10 +106,32 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
         }
     }
 
-    async fn find_by_file_id(&self, _file_id: Uuid) -> Result<Vec<Embedding>, EmbeddingRepositoryError> {
-        // This would require joining with content_chunks table
-        // For now, return empty vec
-        Ok(Vec::new())
+    async fn find_by_file_id(
+        &self,
+        file_id_param: Uuid,
+    ) -> Result<Vec<Embedding>, EmbeddingRepositoryError> {
+        let mut conn = get_connection_from_pool(&self.pool)
+            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+        use crate::infrastructure::database::schema::content_chunks::dsl as chunks_dsl;
+
+        let models = embeddings
+            .inner_join(
+                chunks_dsl::content_chunks.on(content_chunk_id.eq(chunks_dsl::id.nullable())),
+            )
+            .filter(chunks_dsl::file_id.eq(file_id_param))
+            .select(EmbeddingModel::as_select())
+            .load::<EmbeddingModel>(&mut conn)
+            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+        let mut domain_embeddings = Vec::new();
+        for model in models {
+            let domain_embedding = Embedding::try_from(model)
+                .map_err(|e| EmbeddingRepositoryError::ValidationError(e))?;
+            domain_embeddings.push(domain_embedding);
+        }
+
+        Ok(domain_embeddings)
     }
 
     async fn similarity_search(
@@ -111,6 +147,7 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
         let models = embeddings
             .filter(embedding.is_not_null())
             .limit(limit.into())
+            .select(EmbeddingModel::as_select())
             .load::<EmbeddingModel>(&mut conn)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
@@ -119,7 +156,7 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
             if let (Some(emb_vector), Some(chunk_id)) = (&model.embedding, model.content_chunk_id) {
                 // Calculate cosine similarity (simplified)
                 let similarity_score = calculate_cosine_similarity(query_vector, emb_vector);
-                
+
                 if let Some(threshold) = similarity_threshold {
                     if similarity_score < threshold {
                         continue;
@@ -146,28 +183,69 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
     async fn similarity_search_by_file(
         &self,
         query_vector: &Vector,
-        _file_id: Uuid,
+        file_id_param: Uuid,
         limit: i32,
         similarity_threshold: Option<f32>,
     ) -> Result<Vec<SimilaritySearchResult>, EmbeddingRepositoryError> {
-        // This would require joining with content_chunks table to filter by file_id
-        // For now, just call the regular similarity search
-        self.similarity_search(query_vector, limit, similarity_threshold).await
-    }
-
-    async fn update(&self, embedding_entity: &Embedding) -> Result<(), EmbeddingRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
-        let update_model = NewEmbeddingModel::from(embedding_entity);
+        use crate::infrastructure::database::schema::content_chunks::dsl as chunks_dsl;
 
-        diesel::update(embeddings.find(embedding_entity.id()))
-            .set(&update_model)
-            .execute(&mut conn)
+        // Join with content_chunks to filter by file_id
+        let models = embeddings
+            .inner_join(
+                chunks_dsl::content_chunks.on(content_chunk_id.eq(chunks_dsl::id.nullable())),
+            )
+            .filter(chunks_dsl::file_id.eq(file_id_param))
+            .filter(embedding.is_not_null())
+            .limit(limit.into())
+            .select(EmbeddingModel::as_select())
+            .load::<EmbeddingModel>(&mut conn)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
-        Ok(())
+        let mut results = Vec::new();
+        for model in models {
+            if let (Some(emb_vector), Some(chunk_id)) = (&model.embedding, model.content_chunk_id) {
+                // Calculate cosine similarity
+                let similarity_score = calculate_cosine_similarity(query_vector, emb_vector);
+
+                if let Some(threshold) = similarity_threshold {
+                    if similarity_score < threshold {
+                        continue;
+                    }
+                }
+
+                let domain_embedding = Embedding::try_from(model)
+                    .map_err(|e| EmbeddingRepositoryError::ValidationError(e))?;
+
+                results.push(SimilaritySearchResult {
+                    embedding: domain_embedding,
+                    similarity_score,
+                    chunk_id,
+                });
+            }
+        }
+
+        // Sort by similarity score (descending)
+        results.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
+
+        Ok(results)
     }
+
+    // async fn update(&self, embedding_entity: &Embedding) -> Result<(), EmbeddingRepositoryError> {
+    //     let mut conn = get_connection_from_pool(&self.pool)
+    //         .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+    //     let update_model = NewEmbeddingModel::from(embedding_entity);
+
+    //     diesel::update(embeddings.find(embedding_entity.id()))
+    //         .set(&update_model)
+    //         .execute(&mut conn)
+    //         .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+    //     Ok(())
+    // }
 
     async fn delete(&self, embedding_id: Uuid) -> Result<bool, EmbeddingRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
@@ -191,10 +269,32 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
         Ok(deleted_count > 0)
     }
 
-    async fn delete_by_file_id(&self, _file_id: Uuid) -> Result<i64, EmbeddingRepositoryError> {
-        // This would require joining with content_chunks table
-        // For now, return 0
-        Ok(0)
+    async fn delete_by_file_id(
+        &self,
+        file_id_param: Uuid,
+    ) -> Result<i64, EmbeddingRepositoryError> {
+        let mut conn = get_connection_from_pool(&self.pool)
+            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+        use crate::infrastructure::database::schema::content_chunks::dsl as chunks_dsl;
+
+        // Use a subquery to find embeddings that belong to chunks of the specified file
+        let chunk_ids: Vec<Uuid> = chunks_dsl::content_chunks
+            .filter(chunks_dsl::file_id.eq(file_id_param))
+            .select(chunks_dsl::id)
+            .load::<Uuid>(&mut conn)
+            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+        if chunk_ids.is_empty() {
+            return Ok(0);
+        }
+
+        // Delete embeddings that belong to those chunks
+        let deleted_count = diesel::delete(embeddings.filter(content_chunk_id.eq_any(chunk_ids)))
+            .execute(&mut conn)
+            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+
+        Ok(deleted_count as i64)
     }
 
     async fn count(&self) -> Result<i64, EmbeddingRepositoryError> {
@@ -207,7 +307,10 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))
     }
 
-    async fn count_by_model(&self, model_name_param: &str) -> Result<i64, EmbeddingRepositoryError> {
+    async fn count_by_model(
+        &self,
+        model_name_param: &str,
+    ) -> Result<i64, EmbeddingRepositoryError> {
         let mut conn = get_connection_from_pool(&self.pool)
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 

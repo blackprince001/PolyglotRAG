@@ -68,6 +68,12 @@ impl From<ProcessingJob> for NewJobModel {
             ),
         };
 
+        // For failed status, store error details in error_message field
+        let error_message = match job.status() {
+            ProcessingStatus::Failed(error) => Some(error.clone()),
+            _ => job.error_message().map(|s| s.to_string()),
+        };
+
         Self {
             id: job.id(),
             file_id: job.file_id(),
@@ -78,7 +84,7 @@ impl From<ProcessingJob> for NewJobModel {
             created_at: job.created_at(),
             started_at: job.started_at(),
             completed_at: job.completed_at(),
-            error_message: job.error_message().map(|s| s.to_string()),
+            error_message,
             result_summary: job
                 .result_summary()
                 .map(|r| serde_json::to_value(r).unwrap_or_default()),
@@ -88,12 +94,18 @@ impl From<ProcessingJob> for NewJobModel {
 
 impl From<ProcessingJob> for UpdateJobModel {
     fn from(job: ProcessingJob) -> Self {
+        // For failed status, store error details in error_message field
+        let error_message = match job.status() {
+            ProcessingStatus::Failed(error) => Some(Some(error.clone())),
+            _ => job.error_message().map(|s| s.to_string()).map(Some),
+        };
+
         Self {
             status: Some(job.status().to_string()),
             progress: Some(job.progress()),
             started_at: Some(job.started_at()),
             completed_at: Some(job.completed_at()),
-            error_message: Some(job.error_message().map(|s| s.to_string())),
+            error_message,
             result_summary: Some(
                 job.result_summary()
                     .map(|r| serde_json::to_value(r).unwrap_or_default()),
@@ -131,18 +143,28 @@ impl TryFrom<JobModel> for ProcessingJob {
             _ => return Err(format!("Unknown job type: {}", model.job_type)),
         };
 
-        let status = match model.status.as_str() {
+        let _status = match model.status.as_str() {
             "pending" => ProcessingStatus::Pending,
             "processing" => ProcessingStatus::Processing,
             "completed" => ProcessingStatus::Completed,
+            "failed" => {
+                // Error details are stored in error_message field
+                let error = model
+                    .error_message
+                    .as_deref()
+                    .unwrap_or("Unknown error")
+                    .to_string();
+                ProcessingStatus::Failed(error)
+            }
             s if s.starts_with("failed:") => {
+                // Handle legacy format for backward compatibility
                 let error = s.strip_prefix("failed:").unwrap_or(s).to_string();
                 ProcessingStatus::Failed(error)
             }
             _ => return Err(format!("Unknown status: {}", model.status)),
         };
 
-        let result_summary = if let Some(result_json) = model.result_summary {
+        let _result_summary = if let Some(result_json) = model.result_summary {
             Some(
                 serde_json::from_value::<JobResult>(result_json)
                     .map_err(|e| format!("Failed to parse result summary: {}", e))?,

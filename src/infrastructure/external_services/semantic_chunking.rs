@@ -20,12 +20,6 @@ impl Default for RTSplitter {
     }
 }
 
-impl RTSplitter {
-    pub fn new(separators: Vec<&'static str>) -> Self {
-        Self { separators }
-    }
-}
-
 impl RecursiveTextSplitter for RTSplitter {
     fn split_text(&self, text: &str, max_chunk_size: usize) -> Vec<String> {
         if text.len() <= max_chunk_size {
@@ -130,6 +124,8 @@ mod tests {
         let text = "This is a test.\n\nThis is another paragraph.\n\nAnd a third one.";
         let chunks = splitter.split_text(text, 30);
 
+        println!("Chunks: {:?}", chunks);
+
         assert!(!chunks.is_empty());
         for chunk in &chunks {
             assert!(chunk.len() <= 30);
@@ -141,6 +137,8 @@ mod tests {
         let splitter = RTSplitter::default();
         let text = "This is a very long sentence that should be split into multiple chunks with no overlap between them.";
         let chunks = splitter.split_text(text, 40);
+
+        println!("Chunks: {:?}", chunks);
 
         assert!(chunks.len() > 1);
         for chunk in &chunks {

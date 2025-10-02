@@ -1,6 +1,6 @@
+use crate::domain::entities::File;
 use async_trait::async_trait;
 use html2text::from_read;
-use std::path::Path;
 use url::Url;
 
 use crate::application::ports::document_extractor::{
@@ -15,17 +15,45 @@ impl HtmlExtractor {
         Self
     }
 
-    async fn extract_from_url(
+    // async fn extract_from_url(
+    //     &self,
+    //     url: &str,
+    //     padding: usize,
+    // ) -> Result<String, DocumentExtractionError> {
+    //     // Validate URL
+    //     Url::parse(url).map_err(|e| {
+    //         DocumentExtractionError::ExtractionFailed(format!("Invalid URL: {}", e))
+    //     })?;
+
+    //     // Fetch HTML content
+    //     let response = reqwest::get(url).await.map_err(|e| {
+    //         DocumentExtractionError::ExtractionFailed(format!("Failed to fetch URL: {}", e))
+    //     })?;
+
+    //     let html_content = response.text().await.map_err(|e| {
+    //         DocumentExtractionError::ExtractionFailed(format!("Failed to read response: {}", e))
+    //     })?;
+
+    //     // Convert HTML to text
+    //     let text = from_read(html_content.as_bytes(), padding).map_err(|e| {
+    //         DocumentExtractionError::ExtractionFailed(format!(
+    //             "Failed to convert HTML to text: {}",
+    //             e
+    //         ))
+    //     })?;
+
+    //     Ok(text)
+    // }
+
+    async fn extract_from_html_content(
         &self,
         url: &str,
         padding: usize,
     ) -> Result<String, DocumentExtractionError> {
-        // Validate URL
-        Url::parse(url).map_err(|e| {
+        let url = Url::parse(url).map_err(|e| {
             DocumentExtractionError::ExtractionFailed(format!("Invalid URL: {}", e))
         })?;
 
-        // Fetch HTML content
         let response = reqwest::get(url).await.map_err(|e| {
             DocumentExtractionError::ExtractionFailed(format!("Failed to fetch URL: {}", e))
         })?;
@@ -34,22 +62,6 @@ impl HtmlExtractor {
             DocumentExtractionError::ExtractionFailed(format!("Failed to read response: {}", e))
         })?;
 
-        // Convert HTML to text
-        let text = from_read(html_content.as_bytes(), padding).map_err(|e| {
-            DocumentExtractionError::ExtractionFailed(format!(
-                "Failed to convert HTML to text: {}",
-                e
-            ))
-        })?;
-
-        Ok(text)
-    }
-
-    async fn extract_from_html_content(
-        &self,
-        html_content: &str,
-        padding: usize,
-    ) -> Result<String, DocumentExtractionError> {
         let text = from_read(html_content.as_bytes(), padding).map_err(|e| {
             DocumentExtractionError::ExtractionFailed(format!(
                 "Failed to convert HTML to text: {}",
@@ -65,23 +77,19 @@ impl HtmlExtractor {
 impl DocumentExtractor for HtmlExtractor {
     async fn extract_text(
         &self,
-        file_path: &Path,
+        file: &File,
         options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
-        // Read HTML file
-        let html_content = tokio::fs::read_to_string(file_path)
-            .await
-            .map_err(|e| DocumentExtractionError::IoError(e.to_string()))?;
-
+        let content_path = file.file_path();
         let padding = 80; // Default padding for text width
         let text = self
-            .extract_from_html_content(&html_content, padding)
+            .extract_from_html_content(&content_path, padding)
             .await?;
 
         let mut metadata = FileMetadata::new();
         if options.extract_metadata {
             // Extract basic metadata from HTML
-            if let Some(title) = extract_title_from_html(&html_content) {
+            if let Some(title) = extract_title_from_html(&content_path) {
                 metadata.set_title(title);
             }
             metadata.set_language("html".to_string());
@@ -157,20 +165,20 @@ fn extract_title_from_html(html: &str) -> Option<String> {
         .map(|m| m.as_str().trim().to_string())
 }
 
-pub async fn extract_from_url(url: &str) -> Result<ExtractedContent, DocumentExtractionError> {
-    let extractor = HtmlExtractor::new();
-    let text = extractor.extract_from_url(url, 80).await?;
+// pub async fn extract_from_url(url: &str) -> Result<ExtractedContent, DocumentExtractionError> {
+//     let extractor = HtmlExtractor::new();
+//     let text = extractor.extract_from_url(url, 80).await?;
 
-    let mut metadata = FileMetadata::new();
-    metadata.set_property(
-        "source_url".to_string(),
-        serde_json::Value::String(url.to_string()),
-    );
+//     let mut metadata = FileMetadata::new();
+//     metadata.set_property(
+//         "source_url".to_string(),
+//         serde_json::Value::String(url.to_string()),
+//     );
 
-    Ok(ExtractedContent {
-        text,
-        metadata,
-        page_count: Some(1),
-        language: Some("html".to_string()),
-    })
-}
+//     Ok(ExtractedContent {
+//         text,
+//         metadata,
+//         page_count: Some(1),
+//         language: Some("html".to_string()),
+//     })
+// }

@@ -111,38 +111,6 @@ impl JobRepository for PostgresJobRepository {
         Ok(jobs)
     }
 
-    async fn find_jobs_by_status(&self, status: &str) -> Result<Vec<ProcessingJob>, JobRepositoryError> {
-        let mut conn = self.get_connection()?;
-        let status_filter = status.to_string();
-
-        let job_models = tokio::task::spawn_blocking(move || {
-            let mut query = processing_jobs::table.into_boxed();
-            
-            if status_filter == "failed" {
-                // Match any status that starts with "failed:"
-                query = query.filter(processing_jobs::status.like("failed:%"));
-            } else {
-                query = query.filter(processing_jobs::status.eq(status_filter));
-            }
-
-            query
-                .order(processing_jobs::created_at.desc())
-                .load::<JobModel>(&mut conn)
-                .map_err(|e| JobRepositoryError::DatabaseError(format!("Failed to find jobs by status: {}", e)))
-        })
-        .await
-        .map_err(|e| JobRepositoryError::DatabaseError(format!("Task join error: {}", e)))??;
-
-        let mut jobs = Vec::new();
-        for job_model in job_models {
-            let job = ProcessingJob::try_from(job_model)
-                .map_err(|e| JobRepositoryError::DatabaseError(format!("Failed to convert job model: {}", e)))?;
-            jobs.push(job);
-        }
-
-        Ok(jobs)
-    }
-
     async fn update(&self, job: &ProcessingJob) -> Result<(), JobRepositoryError> {
         let update_job = UpdateJobModel::from(job.clone());
         let job_id = job.id();
@@ -158,55 +126,5 @@ impl JobRepository for PostgresJobRepository {
         .map_err(|e| JobRepositoryError::DatabaseError(format!("Task join error: {}", e)))??;
 
         Ok(())
-    }
-
-    async fn delete(&self, job_id: Uuid) -> Result<bool, JobRepositoryError> {
-        let mut conn = self.get_connection()?;
-
-        let rows_affected = tokio::task::spawn_blocking(move || {
-            diesel::delete(processing_jobs::table.filter(processing_jobs::id.eq(job_id)))
-                .execute(&mut conn)
-                .map_err(|e| JobRepositoryError::DatabaseError(format!("Failed to delete job: {}", e)))
-        })
-        .await
-        .map_err(|e| JobRepositoryError::DatabaseError(format!("Task join error: {}", e)))??;
-
-        Ok(rows_affected > 0)
-    }
-
-    async fn count_active_jobs(&self) -> Result<i64, JobRepositoryError> {
-        let mut conn = self.get_connection()?;
-
-        let count = tokio::task::spawn_blocking(move || {
-            processing_jobs::table
-                .filter(processing_jobs::status.eq_any(vec!["pending", "processing"]))
-                .count()
-                .get_result::<i64>(&mut conn)
-                .map_err(|e| JobRepositoryError::DatabaseError(format!("Failed to count active jobs: {}", e)))
-        })
-        .await
-        .map_err(|e| JobRepositoryError::DatabaseError(format!("Task join error: {}", e)))??;
-
-        Ok(count)
-    }
-
-    async fn cleanup_old_jobs(&self, older_than_days: i32) -> Result<i64, JobRepositoryError> {
-        let mut conn = self.get_connection()?;
-
-        let rows_deleted = tokio::task::spawn_blocking(move || {
-            let cutoff_date = chrono::Utc::now() - chrono::Duration::days(older_than_days as i64);
-            
-            diesel::delete(
-                processing_jobs::table
-                    .filter(processing_jobs::completed_at.lt(cutoff_date))
-                    .filter(processing_jobs::status.ne("processing")) // Don't delete active jobs
-            )
-            .execute(&mut conn)
-            .map_err(|e| JobRepositoryError::DatabaseError(format!("Failed to cleanup old jobs: {}", e)))
-        })
-        .await
-        .map_err(|e| JobRepositoryError::DatabaseError(format!("Task join error: {}", e)))??;
-
-        Ok(rows_deleted as i64)
     }
 }

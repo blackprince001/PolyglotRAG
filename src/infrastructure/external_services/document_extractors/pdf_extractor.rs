@@ -1,8 +1,8 @@
+use crate::domain::entities::File;
 use async_trait::async_trait;
-use lopdf::{Document, Object};
+use lopdf::Document;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use crate::application::ports::document_extractor::{
     DocumentExtractionError, DocumentExtractor, ExtractedContent, ExtractionOptions,
@@ -20,60 +20,52 @@ impl PdfExtractor {
         }
     }
 
-    pub fn with_password(password: String) -> Self {
-        Self { password }
-    }
+    // pub fn with_password(password: String) -> Self {
+    //     Self { password }
+    // }
 
-    fn filter_func(object_id: (u32, u16), object: &mut Object) -> Option<((u32, u16), Object)> {
-        static IGNORE: &[&[u8]] = &[
-            b"Length",
-            b"BBox",
-            b"FormType",
-            b"Matrix",
-            b"Type",
-            b"XObject",
-            b"Subtype",
-            b"Filter",
-            b"ColorSpace",
-            b"Width",
-            b"Height",
-            b"BitsPerComponent",
-            b"Length1",
-            b"Length2",
-            b"Length3",
-            b"PTEX.FileName",
-            b"PTEX.PageNumber",
-            b"PTEX.InfoDict",
-            b"FontDescriptor",
-            b"ExtGState",
-            b"MediaBox",
-            b"Annot",
-        ];
+    // fn filter_func(object_id: (u32, u16), object: &mut Object) -> Option<((u32, u16), Object)> {
+    //     // Simplified filter - only remove the most obvious non-text objects
+    //     // The original filter was too aggressive and might be removing text content
+    //     static IGNORE: &[&[u8]] = &[
+    //         b"Length",
+    //         b"BBox",
+    //         b"Matrix",
+    //         b"Filter",
+    //         b"ColorSpace",
+    //         b"Width",
+    //         b"Height",
+    //         b"BitsPerComponent",
+    //         b"PTEX.FileName",
+    //         b"PTEX.PageNumber",
+    //         b"PTEX.InfoDict",
+    //         b"FontDescriptor",
+    //         b"ExtGState",
+    //         b"MediaBox",
+    //     ];
 
-        match object {
-            Object::Dictionary(dict) => {
-                let keys_to_remove: Vec<_> = dict
-                    .iter()
-                    .filter_map(|(key, _)| {
-                        if IGNORE.contains(&key.as_slice()) {
-                            Some(key.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                for key in keys_to_remove {
-                    dict.remove(&key);
-                }
-                if dict.is_empty() {
-                    return None;
-                }
-            }
-            _ => {}
-        }
+    //     match object {
+    //         Object::Dictionary(dict) => {
+    //             let keys_to_remove: Vec<_> = dict
+    //                 .iter()
+    //                 .filter_map(|(key, _)| {
+    //                     if IGNORE.contains(&key.as_slice()) {
+    //                         Some(key.clone())
+    //                     } else {
+    //                         None
+    //                     }
+    //                 })
+    //                 .collect();
+    //             for key in keys_to_remove {
+    //                 dict.remove(&key);
+    //             }
+    //             // Don't filter out empty dictionaries - they might contain important structure
+    //         }
+    //         _ => {}
+    //     }
 
-        Some((object_id, object.to_owned()))
-    }
+    //     Some((object_id, object.to_owned()))
+    // }
 
     async fn extract_pdf_text(
         &self,
@@ -95,6 +87,7 @@ impl PdfExtractor {
             .into_par_iter()
             .map(
                 |(page_num, _): (u32, (u32, u16))| -> Result<(u32, Vec<String>), String> {
+                    // Try extract_text method
                     let text = doc.extract_text(&[page_num]).map_err(|e| {
                         format!("Failed to extract text from page {}: {}", page_num, e)
                     })?;
@@ -124,13 +117,15 @@ impl PdfExtractor {
             }
         }
 
-        let combined_text = if options.preserve_formatting {
-            all_text.join("\n")
+        let combined_text = all_text.join("\n");
+
+        let final_text = if combined_text.trim().is_empty() {
+            "No text could be extracted from this PDF. This might be an image-based PDF (scanned document) that requires OCR processing.".to_string()
         } else {
-            all_text.join(" ")
+            combined_text
         };
 
-        Ok((combined_text, page_texts, errors))
+        Ok((final_text, page_texts, errors))
     }
 
     fn extract_metadata_from_doc(&self, doc: &Document) -> FileMetadata {
@@ -190,14 +185,14 @@ impl Default for PdfExtractor {
 impl DocumentExtractor for PdfExtractor {
     async fn extract_text(
         &self,
-        file_path: &Path,
+        file: &File,
         options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
-        let mut doc = Document::load_filtered(file_path, Self::filter_func)
+        let mut doc = Document::load(file.file_path())
             .map_err(|e| DocumentExtractionError::CorruptedFile(e.to_string()))?;
 
         if doc.is_encrypted() {
-            doc.decrypt(&self.password).map_err(|_| {
+            doc.decrypt(&self.password).map_err(|_e| {
                 DocumentExtractionError::ExtractionFailed(
                     "Failed to decrypt PDF - invalid password".to_string(),
                 )
@@ -235,9 +230,9 @@ impl DocumentExtractor for PdfExtractor {
 
     async fn extract_text_from_bytes(
         &self,
-        data: &[u8],
-        file_type: &str,
-        options: ExtractionOptions,
+        _data: &[u8],
+        _file_type: &str,
+        _options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
         unimplemented!()
     }

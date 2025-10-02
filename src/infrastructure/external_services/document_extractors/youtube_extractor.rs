@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use std::path::Path;
 use url::Url;
 use yt_transcript_rs::api::YouTubeTranscriptApi;
+use crate::domain::entities::File;
+
 
 use crate::application::ports::document_extractor::{
     DocumentExtractionError, DocumentExtractor, ExtractedContent, ExtractionOptions,
@@ -21,7 +22,7 @@ impl YoutubeExtractor {
         Ok(Self { api })
     }
 
-    async fn extract_from_url(
+    pub async fn extract_from_url(
         &self,
         youtube_url: &str,
         options: &ExtractionOptions,
@@ -43,11 +44,10 @@ impl YoutubeExtractor {
 
         // Fetch transcript
         let languages = &["en"]; // Could be made configurable
-        let preserve_formatting = options.preserve_formatting;
 
         let transcript = self
             .api
-            .fetch_transcript(&video_id, languages, preserve_formatting)
+            .fetch_transcript(&video_id, languages, false)
             .await
             .map_err(|e| {
                 DocumentExtractionError::ExtractionFailed(format!(
@@ -62,21 +62,15 @@ impl YoutubeExtractor {
             ));
         }
 
-        // Process transcript
-        let mut content = Vec::new();
         let mut timestamped_content = Vec::new();
 
         for snippet in &transcript.snippets {
-            content.push(snippet.text.clone());
-
-            if preserve_formatting {
-                timestamped_content.push(format!(
-                    "[{:.1}-{:.1}s] {}",
-                    snippet.start,
-                    snippet.start + snippet.duration,
-                    snippet.text
-                ));
-            }
+            timestamped_content.push(format!(
+                "[{:.1}-{:.1}s] {}",
+                snippet.start,
+                snippet.start + snippet.duration,
+                snippet.text
+            ));
         }
 
         // Create metadata
@@ -101,25 +95,18 @@ impl YoutubeExtractor {
                 "source_url".to_string(),
                 serde_json::Value::String(youtube_url.to_string()),
             );
-
-            if preserve_formatting {
-                metadata.set_property(
-                    "timestamped_content".to_string(),
-                    serde_json::Value::Array(
-                        timestamped_content
-                            .into_iter()
-                            .map(serde_json::Value::String)
-                            .collect(),
-                    ),
-                );
-            }
+            metadata.set_property(
+                "timestamped_content".to_string(),
+                serde_json::Value::Array(
+                    timestamped_content.clone()
+                        .into_iter()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                ),
+            );
         }
 
-        let text = if preserve_formatting {
-            content.join("\n")
-        } else {
-            content.join(" ")
-        };
+        let text = timestamped_content.clone().join("\n");
 
         Ok(ExtractedContent {
             text,
@@ -134,7 +121,7 @@ impl YoutubeExtractor {
         match url.host_str() {
             Some("www.youtube.com") | Some("youtube.com") => {
                 // Standard format: https://www.youtube.com/watch?v=VIDEO_ID
-                if let Some(query) = url.query() {
+                if let Some(_) = url.query() {
                     for (key, value) in url.query_pairs() {
                         if key == "v" {
                             return Ok(value.to_string());
@@ -173,15 +160,10 @@ impl Default for YoutubeExtractor {
 impl DocumentExtractor for YoutubeExtractor {
     async fn extract_text(
         &self,
-        file_path: &Path,
+        file: &File,
         options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
-        // Read URL from file
-        let url_content = tokio::fs::read_to_string(file_path)
-            .await
-            .map_err(|e| DocumentExtractionError::IoError(e.to_string()))?;
-
-        let youtube_url = url_content.trim();
+        let youtube_url = file.file_path();
         self.extract_from_url(youtube_url, &options).await
     }
 
@@ -191,7 +173,10 @@ impl DocumentExtractor for YoutubeExtractor {
         file_type: &str,
         options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
-        if file_type != "text/youtube-url" && file_type != "text/plain" {
+        if file_type != "text/youtube-url"
+            && file_type != "text/youtube-transcript"
+            && file_type != "text/plain"
+        {
             return Err(DocumentExtractionError::UnsupportedFormat(
                 file_type.to_string(),
             ));
@@ -208,6 +193,7 @@ impl DocumentExtractor for YoutubeExtractor {
     fn supported_formats(&self) -> Vec<String> {
         vec![
             "text/youtube-url".to_string(),
+            "text/youtube-transcript".to_string(),
             "application/youtube".to_string(),
         ]
     }
@@ -221,16 +207,14 @@ impl DocumentExtractor for YoutubeExtractor {
     }
 }
 
-pub async fn extract_youtube_transcript(
-    youtube_url: &str,
-) -> Result<ExtractedContent, DocumentExtractionError> {
-    let extractor = YoutubeExtractor::new()?;
-    let options = ExtractionOptions {
-        extract_metadata: true,
-        preserve_formatting: true,
-        include_images: false,
-        max_pages: None,
-    };
+// pub async fn extract_youtube_transcript(
+//     youtube_url: &str,
+// ) -> Result<ExtractedContent, DocumentExtractionError> {
+//     let extractor = YoutubeExtractor::new()?;
+//     let options = ExtractionOptions {
+//         extract_metadata: true,
+//         max_pages: None,
+//     };
 
-    extractor.extract_from_url(youtube_url, &options).await
-}
+//     extractor.extract_from_url(youtube_url, &options).await
+// }

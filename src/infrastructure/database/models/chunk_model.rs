@@ -12,7 +12,7 @@ use crate::infrastructure::database::schema::content_chunks;
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContentChunkModel {
     pub id: Uuid,
-    pub file_id: Option<Uuid>,
+    pub file_id: Uuid,
     pub chunk_text: String,
     pub chunk_index: i32,
     pub token_count: Option<i32>,
@@ -26,7 +26,7 @@ pub struct ContentChunkModel {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewContentChunkModel {
     pub id: Option<Uuid>,
-    pub file_id: Option<Uuid>,
+    pub file_id: Uuid,
     pub chunk_text: String,
     pub chunk_index: i32,
     pub token_count: Option<i32>,
@@ -39,7 +39,7 @@ impl From<&DomainChunk> for NewContentChunkModel {
     fn from(domain_chunk: &DomainChunk) -> Self {
         Self {
             id: Some(domain_chunk.id()),
-            file_id: Some(domain_chunk.file_id()),
+            file_id: domain_chunk.file_id(),
             chunk_text: domain_chunk.chunk_text().to_string(),
             chunk_index: domain_chunk.chunk_index(),
             token_count: domain_chunk.token_count(),
@@ -53,7 +53,7 @@ impl From<&DomainChunk> for NewContentChunkModel {
 impl From<ContentChunkModel> for DomainChunk {
     fn from(model: ContentChunkModel) -> Self {
         DomainChunk::new(
-            model.file_id.unwrap_or_default(), // This is a design issue - file_id should not be optional in domain
+            model.file_id,
             model.chunk_text,
             model.chunk_index,
             model.token_count,
