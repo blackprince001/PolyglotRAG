@@ -1,0 +1,70 @@
+use axum::Router;
+use std::{net::SocketAddr, sync::Arc};
+use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::trace::TraceLayer;
+
+use crate::infrastructure::messaging::BackgroundProcessor;
+use crate::presentation::http::{
+    handlers::{FileHandler, JobHandler, SearchHandler, SseHandler},
+    routes::{file_routes, health_routes, job_routes, search_routes},
+};
+
+pub struct HttpServer {
+    file_handler: Arc<FileHandler>,
+    search_handler: Arc<SearchHandler>,
+    job_handler: Arc<JobHandler>,
+    sse_handler: Arc<SseHandler>,
+    background_processor: Arc<BackgroundProcessor>,
+    port: u16,
+}
+
+impl HttpServer {
+    pub fn new(
+        file_handler: Arc<FileHandler>,
+        search_handler: Arc<SearchHandler>,
+        job_handler: Arc<JobHandler>,
+        sse_handler: Arc<SseHandler>,
+        background_processor: Arc<BackgroundProcessor>,
+        port: Option<u16>,
+    ) -> Self {
+        Self {
+            file_handler,
+            search_handler,
+            job_handler,
+            sse_handler,
+            background_processor,
+            port: port.unwrap_or(3000),
+        }
+    }
+
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+        // Start background processor
+        let background_processor = self.background_processor.clone();
+        tokio::spawn(async move {
+            background_processor.start().await;
+        });
+
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        let app = Router::new()
+            .merge(health_routes())
+            .merge(file_routes(self.file_handler))
+            .merge(search_routes(self.search_handler))
+            .merge(job_routes(self.job_handler, self.sse_handler))
+            .layer(cors)
+            .layer(RequestBodyLimitLayer::new(250 * 1024 * 1024)) // 250MB cap
+            .layer(TraceLayer::new_for_http());
+
+        let addr = SocketAddr::from(([0, 0, 0, 0], self.port));
+
+        let listener = TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+
+        Ok(())
+    }
+}
