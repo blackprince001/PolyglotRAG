@@ -92,14 +92,13 @@ impl BackgroundProcessor {
         println!("Worker {} started", worker_id);
 
         loop {
-            let job = self.job_receiver.try_recv().await.unwrap_or(None);
-            match job {
+            match self.job_receiver.recv().await {
                 Some(v) => {
                     println!("Worker {} processing job: {}", worker_id, v.id());
                     self.process_job(v).await;
                 }
                 None => {
-                    println!("Worker {} found no job, sleeping...", worker_id);
+                    println!("Worker {} received None, closing channel", worker_id);
                     break;
                 }
             }
@@ -162,13 +161,16 @@ impl BackgroundProcessor {
         let _ = job.update_progress(0.1, Some("Loading file...".to_string()));
         let _ = self.job_repository.update(job).await;
 
-        // Get the file
+        // Add a small delay to ensure file save transaction is visible to this connection
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        // Get the file - this should exist if upload was successful
         let file = self
             .file_repository
             .find_by_id(job.file_id())
             .await
             .map_err(|e| format!("Failed to find file: {}", e))?
-            .ok_or("File not found".to_string())?;
+            .ok_or_else(|| format!("File not found in database: {}", job.file_id()))?;
 
         // Update progress
         let _ = job.update_progress(0.2, Some("Processing document...".to_string()));
@@ -206,8 +208,6 @@ impl BackgroundProcessor {
                 "text/html",
                 ExtractionOptions {
                     extract_metadata: true,
-                    preserve_formatting: false,
-                    include_images: false,
                     max_pages: None,
                 },
             )
@@ -265,8 +265,6 @@ impl BackgroundProcessor {
                 "text/youtube-url",
                 ExtractionOptions {
                     extract_metadata: true,
-                    preserve_formatting: true,
-                    include_images: false,
                     max_pages: None,
                 },
             )

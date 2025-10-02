@@ -36,7 +36,7 @@ impl FileStorage for LocalFileStorage {
         content_type: Option<&str>,
     ) -> Result<StoredFile, FileStorageError> {
         self.ensure_directory_exists().await?;
-
+        let _ = file_name; // Currently unused, but could be used for metadata or logging
         let file_id = Uuid::new_v4();
         let file_path = self.get_file_path(file_id);
 

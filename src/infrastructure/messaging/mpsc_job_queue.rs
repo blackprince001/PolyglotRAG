@@ -202,13 +202,9 @@ pub struct MpscJobQueueReceiver {
 }
 
 impl MpscJobQueueReceiver {
-    pub async fn try_recv(&self) -> Result<Option<ProcessingJob>, mpsc::error::TryRecvError> {
+    pub async fn recv(&self) -> Option<ProcessingJob> {
         let mut receiver = self.receiver.lock().await;
-        match receiver.try_recv() {
-            Ok(job) => Ok(Some(job)),
-            Err(mpsc::error::TryRecvError::Empty) => Ok(None),
-            Err(e) => Err(e),
-        }
+        receiver.recv().await
     }
 }
 
