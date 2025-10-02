@@ -1,20 +1,34 @@
-// use std::path::PathBuf;
+use std::env;
+mod application;
+mod domain;
+mod infrastructure;
+mod presentation;
 
-use crate::service::scheduler::Scheduler;
+use infrastructure::container::AppContainer;
+use presentation::http::server::HttpServer;
 
-mod db;
-mod core;
-mod server;
-mod service;
-// mod video;
-// use pdf::{PdfExtractOptions, extract_pdf_to_file};
 #[tokio::main]
-async fn main() -> () {
-    let (scheduler, processor) = Scheduler::new();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+    dotenv::dotenv().ok();
 
-    let _ = tokio::spawn(async move {
-        processor.start_processing().await;
-    });
+    let container = AppContainer::new().await?;
 
-    server::run(scheduler).await;
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+
+    let server = HttpServer::new(
+        container.file_handler,
+        container.search_handler,
+        container.job_handler,
+        container.sse_handler,
+        container.background_processor,
+        Some(port),
+    );
+
+    server.run().await?;
+
+    Ok(())
 }
