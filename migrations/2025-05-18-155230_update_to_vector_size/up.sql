@@ -10,7 +10,7 @@ DROP COLUMN embedding;
 
 -- Add the new embedding column with the updated dimension (768)
 ALTER TABLE embeddings
-ADD COLUMN embedding VECTOR(768);
+ADD COLUMN embedding VECTOR(1024);
 
 -- Re-create the index for vector search on the new embedding column
 -- Adjust the 'lists' parameter if needed based on your data size and performance requirements
