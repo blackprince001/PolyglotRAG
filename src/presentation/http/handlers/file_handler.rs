@@ -9,10 +9,13 @@ use uuid::Uuid;
 
 use crate::application::use_cases::{
     GetFileChunksUseCase, GetFileUseCase, ListFilesUseCase, ProcessDocumentUseCase,
-    UploadFileUseCase, get_file::GetFileRequest, get_file_chunks::GetFileChunksRequest,
-    list_files::ListFilesRequest, process_document::ProcessDocumentRequest,
-    upload_file::UploadFileRequest,
+    UploadFileUseCase, UploadWithProcessingUseCase, get_file::GetFileRequest,
+    get_file_chunks::GetFileChunksRequest, list_files::ListFilesRequest,
+    process_document::ProcessDocumentRequest, upload_file::UploadFileRequest,
+    upload_with_processing::UploadWithProcessingRequest,
 };
+use crate::domain::repositories::FileRepository;
+use crate::presentation::http::dto::content_dto::UploadWithProcessingResponse;
 use crate::presentation::http::dto::{
     ApiResponse, PaginationDto, PaginationMetaDto, file_dto::FileChunksResponseDto,
     file_dto::FileDetailResponseDto, file_dto::FileListResponseDto, file_dto::FileResponseDto,
@@ -21,26 +24,32 @@ use crate::presentation::http::dto::{
 
 pub struct FileHandler {
     upload_use_case: Arc<UploadFileUseCase>,
+    upload_with_processing_use_case: Arc<UploadWithProcessingUseCase>,
     list_files_use_case: Arc<ListFilesUseCase>,
     process_document_use_case: Arc<ProcessDocumentUseCase>,
     get_file_use_case: Arc<GetFileUseCase>,
     get_file_chunks_use_case: Arc<GetFileChunksUseCase>,
+    file_repository: Arc<dyn FileRepository>,
 }
 
 impl FileHandler {
     pub fn new(
         upload_use_case: Arc<UploadFileUseCase>,
+        upload_with_processing_use_case: Arc<UploadWithProcessingUseCase>,
         list_files_use_case: Arc<ListFilesUseCase>,
         process_document_use_case: Arc<ProcessDocumentUseCase>,
         get_file_use_case: Arc<GetFileUseCase>,
         get_file_chunks_use_case: Arc<GetFileChunksUseCase>,
+        file_repository: Arc<dyn FileRepository>,
     ) -> Self {
         Self {
             upload_use_case,
+            upload_with_processing_use_case,
             list_files_use_case,
             process_document_use_case,
             get_file_use_case,
             get_file_chunks_use_case,
+            file_repository,
         }
     }
 
@@ -207,6 +216,183 @@ impl FileHandler {
                 StatusCode::NOT_FOUND,
                 Json(ApiResponse::error(
                     "FILE_CHUNKS_NOT_FOUND".to_string(),
+                    e.to_string(),
+                    None,
+                )),
+            )),
+        }
+    }
+
+    pub async fn update_file(
+        State(handler): State<Arc<FileHandler>>,
+        Path(file_id): Path<Uuid>,
+        Json(_update_request): Json<serde_json::Value>,
+    ) -> Result<impl IntoResponse, StatusCode> {
+        // Get the current file
+        let file = match handler.file_repository.find_by_id(file_id).await {
+            Ok(Some(f)) => f,
+            Ok(None) => {
+                return Ok((
+                    StatusCode::NOT_FOUND,
+                    Json(ApiResponse::error(
+                        "FILE_NOT_FOUND".to_string(),
+                        format!("File with ID {} not found", file_id),
+                        None,
+                    )),
+                ));
+            }
+            Err(e) => {
+                return Ok((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse::error(
+                        "DATABASE_ERROR".to_string(),
+                        e.to_string(),
+                        None,
+                    )),
+                ));
+            }
+        };
+
+        match handler.file_repository.update(&file).await {
+            Ok(_) => {
+                let response =
+                    crate::application::use_cases::get_file::GetFileResponse { file: file.clone() };
+                let dto = FileDetailResponseDto::from(response);
+                Ok((StatusCode::OK, Json(ApiResponse::success(dto))))
+            }
+            Err(e) => Ok((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::error(
+                    "UPDATE_FAILED".to_string(),
+                    e.to_string(),
+                    None,
+                )),
+            )),
+        }
+    }
+
+    pub async fn delete_file(
+        State(handler): State<Arc<FileHandler>>,
+        Path(file_id): Path<Uuid>,
+    ) -> Result<impl IntoResponse, StatusCode> {
+        match handler.file_repository.delete(file_id).await {
+            Ok(true) => Ok((
+                StatusCode::OK,
+                Json(ApiResponse::success(
+                    "File deleted successfully".to_string(),
+                )),
+            )),
+            Ok(false) => Ok((
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse::error(
+                    "FILE_NOT_FOUND".to_string(),
+                    format!("File with ID {} not found", file_id),
+                    None,
+                )),
+            )),
+            Err(e) => Ok((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::error(
+                    "DELETE_FAILED".to_string(),
+                    e.to_string(),
+                    None,
+                )),
+            )),
+        }
+    }
+
+    pub async fn get_file_count(
+        State(handler): State<Arc<FileHandler>>,
+    ) -> Result<impl IntoResponse, StatusCode> {
+        match handler.file_repository.count().await {
+            Ok(count) => Ok((
+                StatusCode::OK,
+                Json(ApiResponse::success(serde_json::json!({
+                    "count": count
+                }))),
+            )),
+            Err(e) => Ok((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::error(
+                    "COUNT_FAILED".to_string(),
+                    e.to_string(),
+                    None,
+                )),
+            )),
+        }
+    }
+
+    pub async fn upload_file_with_processing(
+        State(handler): State<Arc<FileHandler>>,
+        mut multipart: Multipart,
+    ) -> Result<impl IntoResponse, StatusCode> {
+        // Parse auto_process parameter (default: true)
+        let mut auto_process = true;
+        let mut file_data = None;
+        let mut file_name = None;
+        let mut content_type = None;
+
+        while let Some(field) = multipart
+            .next_field()
+            .await
+            .map_err(|_| StatusCode::BAD_REQUEST)?
+        {
+            match field.name() {
+                Some("file") => {
+                    file_name = Some(
+                        field
+                            .file_name()
+                            .ok_or(StatusCode::BAD_REQUEST)?
+                            .to_string(),
+                    );
+
+                    content_type = field.content_type().map(|ct| ct.to_string());
+
+                    file_data = Some(
+                        field
+                            .bytes()
+                            .await
+                            .map_err(|_| StatusCode::BAD_REQUEST)?
+                            .to_vec(),
+                    );
+                }
+                Some("auto_process") => {
+                    if let Ok(data) = field.bytes().await {
+                        if let Ok(value) = String::from_utf8(data.to_vec()) {
+                            auto_process = value.parse().unwrap_or(true);
+                        }
+                    }
+                }
+                _ => {
+                    // Skip unknown fields
+                }
+            }
+        }
+
+        let file_data = file_data.ok_or(StatusCode::BAD_REQUEST)?;
+        let file_name = file_name.ok_or(StatusCode::BAD_REQUEST)?;
+
+        let request = UploadWithProcessingRequest {
+            file_data,
+            file_name,
+            content_type,
+            auto_process,
+            metadata: None,
+        };
+
+        match handler
+            .upload_with_processing_use_case
+            .execute(request)
+            .await
+        {
+            Ok(response) => {
+                let dto = UploadWithProcessingResponse::from(response);
+                Ok((StatusCode::CREATED, Json(ApiResponse::success(dto))))
+            }
+            Err(e) => Ok((
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::error(
+                    "UPLOAD_WITH_PROCESSING_FAILED".to_string(),
                     e.to_string(),
                     None,
                 )),

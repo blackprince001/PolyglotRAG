@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::application::use_cases::{get_job_status::GetJobStatusResponse, queue_processing_job::QueueJobResponse};
-use crate::domain::entities::{processing_job::{JobResult, JobType, ProcessingJob}};
+use crate::application::use_cases::{
+    get_job_status::GetJobStatusResponse, queue_processing_job::QueueJobResponse,
+};
+use crate::domain::entities::processing_job::{JobResult, JobType, ProcessingJob};
 
 #[derive(Debug, Serialize)]
 pub struct JobStatusDto {
@@ -42,11 +44,6 @@ pub struct QueueJobResponseDto {
     pub job_type: JobTypeDto,
     pub status: String,
     pub message: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct QueueJobRequestDto {
-    pub job_type: JobTypeDto,
 }
 
 #[derive(Debug, Serialize)]
