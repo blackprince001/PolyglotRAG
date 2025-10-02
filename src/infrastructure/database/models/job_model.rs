@@ -152,7 +152,7 @@ impl TryFrom<JobModel> for ProcessingJob {
         };
 
         // Create the job based on type
-        let mut job = match job_type {
+        let job = match job_type {
             JobType::FileProcessing => ProcessingJob::new_file_processing(model.file_id),
             JobType::UrlExtraction { url } => ProcessingJob::new_url_extraction(model.file_id, url),
             JobType::YoutubeExtraction { url } => {

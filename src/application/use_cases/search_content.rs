@@ -1,10 +1,7 @@
 use std::sync::Arc;
-use pgvector::Vector;
 
-use crate::application::ports::EmbeddingProvider;
 use crate::application::services::SearchService;
-use crate::domain::entities::{SearchQuery, ContentChunk};
-use crate::domain::repositories::{EmbeddingRepository, ChunkRepository};
+use crate::domain::entities::ContentChunk;
 
 #[derive(Debug)]
 pub enum SearchContentError {

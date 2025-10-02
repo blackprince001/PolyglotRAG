@@ -4,4 +4,3 @@ pub mod repositories;
 pub mod schema;
 
 pub use connection::*;
-pub use models::*;
