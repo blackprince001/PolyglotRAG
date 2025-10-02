@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    container_name: pgvector_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  text-embeddings-inference:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.8
+    volumes:
+      - ./data:/data # Mounts the local ./data directory to /data in the container
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: 1 # Explicitly request 1 GPU; use 'all' for all GPUs or specify device IDs
+    command: --model-id Qwen/Qwen3-Embedding-0.6B
+
+volumes:
+  pgdata:
