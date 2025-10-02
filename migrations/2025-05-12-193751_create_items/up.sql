@@ -23,8 +23,7 @@ CREATE TABLE content_chunks (
     token_count INTEGER,
     page_number INTEGER,
     section_path TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT unique_chunk_per_file UNIQUE (file_id, chunk_index)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Embeddings table
