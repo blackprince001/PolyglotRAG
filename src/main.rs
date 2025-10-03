@@ -21,9 +21,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let server = HttpServer::new(
         container.file_handler,
+        container.content_handler,
         container.search_handler,
         container.job_handler,
         container.sse_handler,
+        container.chunk_handler,
+        container.embedding_handler,
         container.background_processor,
         Some(port),
     );
