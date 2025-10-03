@@ -9,7 +9,7 @@ pub enum EmbeddingRepositoryError {
     NotFound(Uuid),
     DatabaseError(String),
     ValidationError(String),
-    VectorError(String),
+    // VectorError(String),
 }
 
 impl std::fmt::Display for EmbeddingRepositoryError {
@@ -18,7 +18,7 @@ impl std::fmt::Display for EmbeddingRepositoryError {
             EmbeddingRepositoryError::NotFound(id) => write!(f, "Embedding not found: {}", id),
             EmbeddingRepositoryError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             EmbeddingRepositoryError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
-            EmbeddingRepositoryError::VectorError(msg) => write!(f, "Vector error: {}", msg),
+            // EmbeddingRepositoryError::VectorError(msg) => write!(f, "Vector error: {}", msg),
         }
     }
 }
@@ -52,7 +52,7 @@ pub trait EmbeddingRepository: Send + Sync {
         limit: i32,
         similarity_threshold: Option<f32>,
     ) -> Result<Vec<SimilaritySearchResult>, EmbeddingRepositoryError>;
-    async fn update(&self, embedding: &Embedding) -> Result<(), EmbeddingRepositoryError>;
+    // async fn update(&self, embedding: &Embedding) -> Result<(), EmbeddingRepositoryError>;
     async fn delete(&self, id: Uuid) -> Result<bool, EmbeddingRepositoryError>;
     async fn delete_by_chunk_id(&self, chunk_id: Uuid) -> Result<bool, EmbeddingRepositoryError>;
     async fn delete_by_file_id(&self, file_id: Uuid) -> Result<i64, EmbeddingRepositoryError>;

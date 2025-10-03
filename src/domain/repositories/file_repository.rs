@@ -8,7 +8,7 @@ pub enum FileRepositoryError {
     NotFound(Uuid),
     DatabaseError(String),
     ValidationError(String),
-    DuplicateError(String),
+    // DuplicateError(String),
 }
 
 impl std::fmt::Display for FileRepositoryError {
@@ -17,7 +17,7 @@ impl std::fmt::Display for FileRepositoryError {
             FileRepositoryError::NotFound(id) => write!(f, "File not found: {}", id),
             FileRepositoryError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             FileRepositoryError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
-            FileRepositoryError::DuplicateError(msg) => write!(f, "Duplicate error: {}", msg),
+            // FileRepositoryError::DuplicateError(msg) => write!(f, "Duplicate error: {}", msg),
         }
     }
 }
@@ -26,7 +26,7 @@ impl std::error::Error for FileRepositoryError {}
 
 #[async_trait]
 pub trait FileRepository: Send + Sync {
-    async fn save(&self, file: &File) -> Result<(), FileRepositoryError>;
+    async fn save(&self, file: &File) -> Result<Uuid, FileRepositoryError>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<File>, FileRepositoryError>;
     async fn find_by_hash(&self, hash: &str) -> Result<Option<File>, FileRepositoryError>;
     async fn find_all(&self, skip: i64, limit: i64) -> Result<Vec<File>, FileRepositoryError>;

@@ -26,7 +26,10 @@ impl ProcessingStatus {
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(self, ProcessingStatus::Completed | ProcessingStatus::Failed(_))
+        matches!(
+            self,
+            ProcessingStatus::Completed | ProcessingStatus::Failed(_)
+        )
     }
 
     pub fn can_transition_to(&self, new_status: &ProcessingStatus) -> bool {
@@ -51,7 +54,7 @@ impl ProcessingStatus {
             ProcessingStatus::Pending => "pending".to_string(),
             ProcessingStatus::Processing => "processing".to_string(),
             ProcessingStatus::Completed => "completed".to_string(),
-            ProcessingStatus::Failed(error) => format!("failed: {}", error),
+            ProcessingStatus::Failed(_) => "failed".to_string(), // Keep status short, store error in error_message field
         }
     }
 
@@ -60,7 +63,9 @@ impl ProcessingStatus {
             "pending" => Ok(ProcessingStatus::Pending),
             "processing" => Ok(ProcessingStatus::Processing),
             "completed" => Ok(ProcessingStatus::Completed),
+            "failed" => Ok(ProcessingStatus::Failed("Unknown error".to_string())), // Error details will be in error_message field
             s if s.starts_with("failed:") => {
+                // Handle legacy format for backward compatibility
                 let error = s.strip_prefix("failed:").unwrap_or("").trim();
                 Ok(ProcessingStatus::Failed(error.to_string()))
             }
@@ -161,7 +166,10 @@ mod tests {
         assert_eq!(ProcessingStatus::Pending.progress_percentage(), 0.0);
         assert_eq!(ProcessingStatus::Processing.progress_percentage(), 50.0);
         assert_eq!(ProcessingStatus::Completed.progress_percentage(), 100.0);
-        assert_eq!(ProcessingStatus::Failed("error".to_string()).progress_percentage(), 0.0);
+        assert_eq!(
+            ProcessingStatus::Failed("error".to_string()).progress_percentage(),
+            0.0
+        );
     }
 
     #[test]
