@@ -84,7 +84,7 @@ impl QueueProcessingJobUseCase {
             .find_by_id(request.file_id)
             .await
             .map_err(|e| QueueJobError::RepositoryError(e.to_string()))?
-            .ok_or(QueueJobError::FileNotFound(request.file_id))?;
+            .ok_or_else(|| QueueJobError::FileNotFound(request.file_id))?;
 
         // Check if there's already an active job for this file
         let existing_jobs = self.job_repository.find_by_file_id(file.id()).await?;

@@ -29,7 +29,7 @@ impl File {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: Uuid::nil(), // Will be set by database
             file_path,
             file_name,
             file_size,
@@ -39,6 +39,32 @@ impl File {
             updated_at: now,
             metadata,
             processing_status: ProcessingStatus::Pending,
+        }
+    }
+
+    pub fn with_id(
+        id: Uuid,
+        file_path: String,
+        file_name: String,
+        file_size: Option<i64>,
+        file_type: Option<String>,
+        file_hash: Option<FileHash>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+        metadata: Option<FileMetadata>,
+        processing_status: ProcessingStatus,
+    ) -> Self {
+        Self {
+            id,
+            file_path,
+            file_name,
+            file_size,
+            file_type,
+            file_hash,
+            created_at,
+            updated_at,
+            metadata,
+            processing_status,
         }
     }
 
@@ -182,7 +208,7 @@ mod tests {
 
         file.start_processing().unwrap();
         assert!(file.fail_processing("Processing error".to_string()).is_ok());
-        
+
         if let ProcessingStatus::Failed(error) = file.processing_status() {
             assert_eq!(error, "Processing error");
         } else {

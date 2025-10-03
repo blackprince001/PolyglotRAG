@@ -8,4 +8,3 @@ pub use content_chunk::ContentChunk;
 pub use embedding::Embedding;
 pub use file::File;
 pub use processing_job::ProcessingJob;
-pub use search_query::SearchQuery;
