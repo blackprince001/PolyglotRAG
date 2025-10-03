@@ -82,10 +82,10 @@ sequenceDiagram
 #### **Key Components & Technologies**
 
 *   **Language:** Rust (for performance and memory safety)
-*   **Data Sources:** HTML (via `html2md`), YouTube Transcripts, PDFs (text extraction), Audio (OpenAI Whisper)
+*   **Data Sources:** HTML (via `html2md`), YouTube Transcripts, PDFs (text extraction)
 *   **Concurrency:** Multi-threading, System Channels, and Shared Memory for inter-process communication.
 *   **Database:** PostgreSQL with PGVector extension for efficient vector similarity search.
-*   **Embeddings:** External API calls to state-of-the-art language models (e.g., OpenAI, Hugging Face).
+*   **Embeddings:** External API calls to state-of-the-art open source embedding models.
 *   **API:** RESTful API (built with Axum/Actix-web) to handle search queries.
 
 #### **Purpose & Value**
