@@ -79,6 +79,33 @@ impl ProcessingJob {
         }
     }
 
+    /// Create a ProcessingJob from database values (for repository reconstruction)
+    pub fn from_database(
+        id: Uuid,
+        file_id: Uuid,
+        job_type: JobType,
+        status: ProcessingStatus,
+        progress: f32,
+        created_at: DateTime<Utc>,
+        started_at: Option<DateTime<Utc>>,
+        completed_at: Option<DateTime<Utc>>,
+        error_message: Option<String>,
+        result_summary: Option<JobResult>,
+    ) -> Self {
+        Self {
+            id,
+            file_id,
+            job_type,
+            status,
+            progress,
+            created_at,
+            started_at,
+            completed_at,
+            error_message,
+            result_summary,
+        }
+    }
+
     pub fn id(&self) -> Uuid {
         self.id
     }

@@ -13,15 +13,15 @@ pub fn embedding_routes(embedding_handler: Arc<EmbeddingHandler>) -> Router {
             get(EmbeddingHandler::get_embedding),
         )
         .route(
-            "/embeddings/chunk/{chunk_id}",
+            "/chunk-embeddings/{chunk_id}",
             get(EmbeddingHandler::get_embedding_by_chunk),
         )
         .route(
-            "/embeddings/file/{file_id}",
+            "/file-embeddings/{file_id}",
             get(EmbeddingHandler::get_embeddings_by_file),
         )
         .route(
-            "/embeddings/search",
+            "/similarity-search",
             post(EmbeddingHandler::similarity_search),
         )
         .route(
@@ -29,20 +29,20 @@ pub fn embedding_routes(embedding_handler: Arc<EmbeddingHandler>) -> Router {
             delete(EmbeddingHandler::delete_embedding),
         )
         .route(
-            "/embeddings/chunk/{chunk_id}",
+            "/chunk-embeddings/{chunk_id}",
             delete(EmbeddingHandler::delete_embeddings_by_chunk),
         )
         .route(
-            "/embeddings/file/{file_id}",
+            "/file-embeddings/{file_id}",
             delete(EmbeddingHandler::delete_embeddings_by_file),
         )
         .route(
-            "/embeddings/count",
+            "/embeddings-count",
             get(EmbeddingHandler::get_embedding_count),
         )
-        .route(
-            "/embeddings/count/model/{model_name}",
-            get(EmbeddingHandler::get_embedding_count_by_model),
-        )
+        // .route(
+        //     "/embeddings/count/model/{model_name}",
+        //     get(EmbeddingHandler::get_embedding_count_by_model),
+        // )
         .with_state(embedding_handler)
 }

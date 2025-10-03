@@ -1,6 +1,7 @@
 use axum::Router;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
+use tower_http::classify::ServerErrorsFailureClass;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
@@ -76,7 +77,40 @@ impl HttpServer {
             .merge(embedding_routes(self.embedding_handler.clone()))
             .layer(cors)
             .layer(RequestBodyLimitLayer::new(250 * 1024 * 1024)) // 250MB cap
-            .layer(TraceLayer::new_for_http());
+            .layer(
+                TraceLayer::new_for_http()
+                    .on_request(
+                        |request: &axum::http::Request<axum::body::Body>, _span: &tracing::Span| {
+                            tracing::info!(
+                                "Received request: {} {}",
+                                request.method(),
+                                request.uri()
+                            );
+                        },
+                    )
+                    .on_response(
+                        |response: &axum::http::Response<axum::body::Body>,
+                         latency: std::time::Duration,
+                         _span: &tracing::Span| {
+                            tracing::info!(
+                                "Response: {} (took {} ms)",
+                                response.status(),
+                                latency.as_millis()
+                            );
+                        },
+                    )
+                    .on_failure(
+                        |error: ServerErrorsFailureClass,
+                         latency: std::time::Duration,
+                         _span: &tracing::Span| {
+                            tracing::error!(
+                                "Request failed: {:?} (took {} ms)",
+                                error,
+                                latency.as_millis()
+                            );
+                        },
+                    ),
+            );
 
         let addr = SocketAddr::from(([0, 0, 0, 0], self.port));
 

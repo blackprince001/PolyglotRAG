@@ -307,19 +307,19 @@ impl EmbeddingRepository for PostgresEmbeddingRepository {
             .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))
     }
 
-    async fn count_by_model(
-        &self,
-        model_name_param: &str,
-    ) -> Result<i64, EmbeddingRepositoryError> {
-        let mut conn = get_connection_from_pool(&self.pool)
-            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
+    // async fn count_by_model(
+    //     &self,
+    //     model_name_param: &str,
+    // ) -> Result<i64, EmbeddingRepositoryError> {
+    //     let mut conn = get_connection_from_pool(&self.pool)
+    //         .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))?;
 
-        embeddings
-            .filter(model_name.eq(model_name_param))
-            .count()
-            .get_result(&mut conn)
-            .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))
-    }
+    //     embeddings
+    //         .filter(model_name.eq(model_name_param))
+    //         .count()
+    //         .get_result(&mut conn)
+    //         .map_err(|e| EmbeddingRepositoryError::DatabaseError(e.to_string()))
+    // }
 }
 
 // Helper function to calculate cosine similarity

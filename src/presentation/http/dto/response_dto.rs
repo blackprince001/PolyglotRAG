@@ -43,7 +43,6 @@ impl<T> ApiResponse<T> {
 pub struct HealthResponseDto {
     pub status: String,
     pub version: String,
-    pub uptime: String,
 }
 
 #[derive(Debug, Serialize)]

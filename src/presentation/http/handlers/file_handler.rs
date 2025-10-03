@@ -8,18 +8,17 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::application::use_cases::{
-    GetFileChunksUseCase, GetFileUseCase, ListFilesUseCase, ProcessDocumentUseCase,
-    UploadFileUseCase, UploadWithProcessingUseCase, get_file::GetFileRequest,
-    get_file_chunks::GetFileChunksRequest, list_files::ListFilesRequest,
+    GetFileUseCase, ListFilesUseCase, ProcessDocumentUseCase, UploadFileUseCase,
+    UploadWithProcessingUseCase, get_file::GetFileRequest, list_files::ListFilesRequest,
     process_document::ProcessDocumentRequest, upload_file::UploadFileRequest,
     upload_with_processing::UploadWithProcessingRequest,
 };
 use crate::domain::repositories::FileRepository;
 use crate::presentation::http::dto::content_dto::UploadWithProcessingResponse;
 use crate::presentation::http::dto::{
-    ApiResponse, PaginationDto, PaginationMetaDto, file_dto::FileChunksResponseDto,
-    file_dto::FileDetailResponseDto, file_dto::FileListResponseDto, file_dto::FileResponseDto,
-    file_dto::ProcessFileResponseDto, file_dto::UploadResponseDto,
+    ApiResponse, PaginationDto, PaginationMetaDto, file_dto::FileDetailResponseDto,
+    file_dto::FileListResponseDto, file_dto::FileResponseDto, file_dto::ProcessFileResponseDto,
+    file_dto::UploadResponseDto,
 };
 
 pub struct FileHandler {
@@ -28,7 +27,6 @@ pub struct FileHandler {
     list_files_use_case: Arc<ListFilesUseCase>,
     process_document_use_case: Arc<ProcessDocumentUseCase>,
     get_file_use_case: Arc<GetFileUseCase>,
-    get_file_chunks_use_case: Arc<GetFileChunksUseCase>,
     file_repository: Arc<dyn FileRepository>,
 }
 
@@ -39,7 +37,6 @@ impl FileHandler {
         list_files_use_case: Arc<ListFilesUseCase>,
         process_document_use_case: Arc<ProcessDocumentUseCase>,
         get_file_use_case: Arc<GetFileUseCase>,
-        get_file_chunks_use_case: Arc<GetFileChunksUseCase>,
         file_repository: Arc<dyn FileRepository>,
     ) -> Self {
         Self {
@@ -48,7 +45,6 @@ impl FileHandler {
             list_files_use_case,
             process_document_use_case,
             get_file_use_case,
-            get_file_chunks_use_case,
             file_repository,
         }
     }
@@ -57,14 +53,16 @@ impl FileHandler {
         State(handler): State<Arc<FileHandler>>,
         mut multipart: Multipart,
     ) -> Result<impl IntoResponse, StatusCode> {
-        while let Some(field) = multipart
-            .next_field()
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?
-        {
+        while let Some(field) = multipart.next_field().await.map_err(|e| {
+            eprintln!("Error reading multipart field: {:?}", e);
+            StatusCode::BAD_REQUEST
+        })? {
             let file_name = field
                 .file_name()
-                .ok_or(StatusCode::BAD_REQUEST)?
+                .ok_or_else(|| {
+                    eprintln!("No file name provided in field: {:?}", field.name());
+                    StatusCode::BAD_REQUEST
+                })?
                 .to_string();
 
             let content_type = field.content_type().map(|ct| ct.to_string());
@@ -72,7 +70,10 @@ impl FileHandler {
             let data = field
                 .bytes()
                 .await
-                .map_err(|_| StatusCode::BAD_REQUEST)?
+                .map_err(|e| {
+                    eprintln!("Error reading file data: {:?}", e);
+                    StatusCode::BAD_REQUEST
+                })?
                 .to_vec();
 
             let request = UploadFileRequest {
@@ -196,33 +197,6 @@ impl FileHandler {
         }
     }
 
-    pub async fn get_file_chunks(
-        State(handler): State<Arc<FileHandler>>,
-        Path(file_id): Path<Uuid>,
-        Query(pagination): Query<PaginationDto>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        let request = GetFileChunksRequest {
-            file_id,
-            skip: Some(pagination.skip),
-            limit: Some(pagination.limit),
-        };
-
-        match handler.get_file_chunks_use_case.execute(request).await {
-            Ok(response) => {
-                let dto = FileChunksResponseDto::from(response);
-                Ok((StatusCode::OK, Json(ApiResponse::success(dto))))
-            }
-            Err(e) => Ok((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::error(
-                    "FILE_CHUNKS_NOT_FOUND".to_string(),
-                    e.to_string(),
-                    None,
-                )),
-            )),
-        }
-    }
-
     pub async fn update_file(
         State(handler): State<Arc<FileHandler>>,
         Path(file_id): Path<Uuid>,
@@ -332,17 +306,19 @@ impl FileHandler {
         let mut file_name = None;
         let mut content_type = None;
 
-        while let Some(field) = multipart
-            .next_field()
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?
-        {
+        while let Some(field) = multipart.next_field().await.map_err(|e| {
+            eprintln!("Error reading multipart field: {:?}", e);
+            StatusCode::BAD_REQUEST
+        })? {
             match field.name() {
-                Some("file") => {
+                Some("file") | Some("upload") | Some("document") => {
                     file_name = Some(
                         field
                             .file_name()
-                            .ok_or(StatusCode::BAD_REQUEST)?
+                            .ok_or_else(|| {
+                                eprintln!("No file name provided in field: {:?}", field.name());
+                                StatusCode::BAD_REQUEST
+                            })?
                             .to_string(),
                     );
 
@@ -352,7 +328,10 @@ impl FileHandler {
                         field
                             .bytes()
                             .await
-                            .map_err(|_| StatusCode::BAD_REQUEST)?
+                            .map_err(|e| {
+                                eprintln!("Error reading file data: {:?}", e);
+                                StatusCode::BAD_REQUEST
+                            })?
                             .to_vec(),
                     );
                 }
@@ -365,12 +344,19 @@ impl FileHandler {
                 }
                 _ => {
                     // Skip unknown fields
+                    eprintln!("Skipping unknown field: {:?}", field.name());
                 }
             }
         }
 
-        let file_data = file_data.ok_or(StatusCode::BAD_REQUEST)?;
-        let file_name = file_name.ok_or(StatusCode::BAD_REQUEST)?;
+        let file_data = file_data.ok_or_else(|| {
+            eprintln!("No file data found in multipart form. Expected field named 'file', 'upload', or 'document'");
+            StatusCode::BAD_REQUEST
+        })?;
+        let file_name = file_name.ok_or_else(|| {
+            eprintln!("No file name found in multipart form");
+            StatusCode::BAD_REQUEST
+        })?;
 
         let request = UploadWithProcessingRequest {
             file_data,

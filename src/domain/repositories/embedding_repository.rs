@@ -57,5 +57,5 @@ pub trait EmbeddingRepository: Send + Sync {
     async fn delete_by_chunk_id(&self, chunk_id: Uuid) -> Result<bool, EmbeddingRepositoryError>;
     async fn delete_by_file_id(&self, file_id: Uuid) -> Result<i64, EmbeddingRepositoryError>;
     async fn count(&self) -> Result<i64, EmbeddingRepositoryError>;
-    async fn count_by_model(&self, model_name: &str) -> Result<i64, EmbeddingRepositoryError>;
+    // async fn count_by_model(&self, model_name: &str) -> Result<i64, EmbeddingRepositoryError>;
 }

@@ -143,7 +143,7 @@ impl TryFrom<JobModel> for ProcessingJob {
             _ => return Err(format!("Unknown job type: {}", model.job_type)),
         };
 
-        let _status = match model.status.as_str() {
+        let status = match model.status.as_str() {
             "pending" => ProcessingStatus::Pending,
             "processing" => ProcessingStatus::Processing,
             "completed" => ProcessingStatus::Completed,
@@ -164,7 +164,7 @@ impl TryFrom<JobModel> for ProcessingJob {
             _ => return Err(format!("Unknown status: {}", model.status)),
         };
 
-        let _result_summary = if let Some(result_json) = model.result_summary {
+        let result_summary = if let Some(result_json) = model.result_summary {
             Some(
                 serde_json::from_value::<JobResult>(result_json)
                     .map_err(|e| format!("Failed to parse result summary: {}", e))?,
@@ -173,26 +173,21 @@ impl TryFrom<JobModel> for ProcessingJob {
             None
         };
 
-        // Create the job based on type
-        let job = match job_type {
-            JobType::FileProcessing => ProcessingJob::new_file_processing(model.file_id),
-            JobType::UrlExtraction { url } => ProcessingJob::new_url_extraction(model.file_id, url),
-            JobType::YoutubeExtraction { url } => {
-                ProcessingJob::new_youtube_extraction(model.file_id, url)
-            }
-        };
+        // Create the job using the from_database constructor with all actual database values
+        let job = ProcessingJob::from_database(
+            model.id,
+            model.file_id,
+            job_type,
+            status,
+            model.progress,
+            model.created_at,
+            model.started_at,
+            model.completed_at,
+            model.error_message,
+            result_summary,
+        );
 
-        // Manually set the fields that can't be set through constructors
-        // This is a bit hacky but necessary since ProcessingJob doesn't expose setters
-        // We'll need to use unsafe or refactor ProcessingJob to allow this
-        // For now, let's create a new job and manually reconstruct it
-
-        // Note: This is a limitation of the current design. In a real implementation,
-        // we might want to add a `from_database` constructor to ProcessingJob
-        // or make the fields public with proper validation.
-
-        Ok(job) // This will have default values, which is not ideal
-        // TODO: Refactor ProcessingJob to support database reconstruction
+        Ok(job)
     }
 }
 

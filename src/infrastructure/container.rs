@@ -5,7 +5,7 @@ use crate::{
         ports::{DocumentExtractor, EmbeddingProvider, FileStorage, JobQueue},
         services::{DocumentProcessorService, EmbeddingService, SearchService},
         use_cases::{
-            CancelJobUseCase, GetFileChunksUseCase, GetFileUseCase, GetJobStatusUseCase,
+            CancelJobUseCase, GetFileUseCase, GetJobStatusUseCase,
             ListFilesUseCase, ProcessDocumentUseCase, ProcessUrlDirectUseCase,
             ProcessYoutubeDirectUseCase, QueueProcessingJobUseCase, SearchContentUseCase,
             UploadFileUseCase, UploadWithProcessingUseCase,
@@ -142,11 +142,6 @@ impl AppContainer {
 
         let get_file_use_case = Arc::new(GetFileUseCase::new(file_repository.clone()));
 
-        let get_file_chunks_use_case = Arc::new(GetFileChunksUseCase::new(
-            file_repository.clone(),
-            chunk_repository.clone(),
-        ));
-
         // Create job queue and background processor
         let (job_queue, job_receiver) = MpscJobQueue::create_pair();
         let job_queue: Arc<dyn JobQueue> = Arc::new(job_queue);
@@ -204,7 +199,6 @@ impl AppContainer {
             list_files_use_case.clone(),
             process_document_use_case.clone(),
             get_file_use_case.clone(),
-            get_file_chunks_use_case.clone(),
             file_repository.clone(),
         ));
 

@@ -285,7 +285,7 @@ DELETE /files/{file_id}
 Get the total number of files in the system.
 
 ```http
-GET /files/count
+GET /filesys/count
 ```
 
 **Response:**

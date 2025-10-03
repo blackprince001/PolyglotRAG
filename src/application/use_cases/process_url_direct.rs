@@ -119,8 +119,9 @@ impl ProcessUrlDirectUseCase {
             Some(metadata),                // metadata
         );
 
-        // Save file to repository
-        self.file_repository
+        // Save file to repository and get the generated ID
+        let file_id = self
+            .file_repository
             .save(&file)
             .await
             .map_err(|e| ProcessUrlDirectError::RepositoryError(e.to_string()))?;
@@ -128,7 +129,7 @@ impl ProcessUrlDirectUseCase {
         // Queue processing job if auto_process is enabled
         let job_response = if request.auto_process {
             let queue_request = QueueJobRequest {
-                file_id: file.id(),
+                file_id,
                 job_type: JobType::UrlExtraction {
                     url: request.url.clone(),
                 },
@@ -143,7 +144,7 @@ impl ProcessUrlDirectUseCase {
 
         Ok(ProcessUrlDirectResponse {
             job_id: job_response.job_id,
-            file_id: file.id(),
+            file_id,
             url: request.url,
             filename,
             status: job_response.status,

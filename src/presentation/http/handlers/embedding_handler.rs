@@ -337,31 +337,4 @@ impl EmbeddingHandler {
             )),
         }
     }
-
-    pub async fn get_embedding_count_by_model(
-        State(handler): State<Arc<EmbeddingHandler>>,
-        Path(model_name): Path<String>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        match handler
-            .embedding_repository
-            .count_by_model(&model_name)
-            .await
-        {
-            Ok(count) => Ok((
-                StatusCode::OK,
-                Json(ApiResponse::success(serde_json::json!({
-                    "model_name": model_name,
-                    "count": count
-                }))),
-            )),
-            Err(e) => Ok((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::error(
-                    "COUNT_FAILED".to_string(),
-                    e.to_string(),
-                    None,
-                )),
-            )),
-        }
-    }
 }
