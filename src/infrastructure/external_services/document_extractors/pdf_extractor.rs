@@ -1,6 +1,7 @@
 use crate::domain::entities::File;
 use async_trait::async_trait;
 use lopdf::Document;
+use lopdf::Object;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::BTreeMap;
 
@@ -24,48 +25,46 @@ impl PdfExtractor {
     //     Self { password }
     // }
 
-    // fn filter_func(object_id: (u32, u16), object: &mut Object) -> Option<((u32, u16), Object)> {
-    //     // Simplified filter - only remove the most obvious non-text objects
-    //     // The original filter was too aggressive and might be removing text content
-    //     static IGNORE: &[&[u8]] = &[
-    //         b"Length",
-    //         b"BBox",
-    //         b"Matrix",
-    //         b"Filter",
-    //         b"ColorSpace",
-    //         b"Width",
-    //         b"Height",
-    //         b"BitsPerComponent",
-    //         b"PTEX.FileName",
-    //         b"PTEX.PageNumber",
-    //         b"PTEX.InfoDict",
-    //         b"FontDescriptor",
-    //         b"ExtGState",
-    //         b"MediaBox",
-    //     ];
+    fn filter_func(object_id: (u32, u16), object: &mut Object) -> Option<((u32, u16), Object)> {
+        static IGNORE: &[&[u8]] = &[
+            b"Length",
+            b"BBox",
+            b"Matrix",
+            b"Filter",
+            b"ColorSpace",
+            b"Width",
+            b"Height",
+            b"BitsPerComponent",
+            b"PTEX.FileName",
+            b"PTEX.PageNumber",
+            b"PTEX.InfoDict",
+            b"FontDescriptor",
+            b"ExtGState",
+            b"MediaBox",
+        ];
 
-    //     match object {
-    //         Object::Dictionary(dict) => {
-    //             let keys_to_remove: Vec<_> = dict
-    //                 .iter()
-    //                 .filter_map(|(key, _)| {
-    //                     if IGNORE.contains(&key.as_slice()) {
-    //                         Some(key.clone())
-    //                     } else {
-    //                         None
-    //                     }
-    //                 })
-    //                 .collect();
-    //             for key in keys_to_remove {
-    //                 dict.remove(&key);
-    //             }
-    //             // Don't filter out empty dictionaries - they might contain important structure
-    //         }
-    //         _ => {}
-    //     }
+        match object {
+            Object::Dictionary(dict) => {
+                let keys_to_remove: Vec<_> = dict
+                    .iter()
+                    .filter_map(|(key, _)| {
+                        if IGNORE.contains(&key.as_slice()) {
+                            Some(key.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                for key in keys_to_remove {
+                    dict.remove(&key);
+                }
+                // Don't filter out empty dictionaries - they might contain important structure
+            }
+            _ => {}
+        }
 
-    //     Some((object_id, object.to_owned()))
-    // }
+        Some((object_id, object.to_owned()))
+    }
 
     async fn extract_pdf_text(
         &self,
@@ -188,7 +187,8 @@ impl DocumentExtractor for PdfExtractor {
         file: &File,
         options: ExtractionOptions,
     ) -> Result<ExtractedContent, DocumentExtractionError> {
-        let mut doc = Document::load(file.file_path())
+        // let path = std::path::Path::new(&file.file_path());
+        let mut doc = Document::load_filtered(file.file_path(), Self::filter_func)
             .map_err(|e| DocumentExtractionError::CorruptedFile(e.to_string()))?;
 
         if doc.is_encrypted() {
